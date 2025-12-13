@@ -3,12 +3,14 @@ import os
 import asyncio
 from runner import main  # importa sua função Playwright
 from datetime import datetime
+from flask_cors import CORS
 
 from utils.salvar_dados_processados import salvar_lista_processada 
 from controllers.dadosController import carregar_lote_mais_recente
 
 
 app = Flask(__name__, template_folder="views")
+CORS(app)
 
 
 UPLOAD_FOLDER = "data/temp"
@@ -24,18 +26,26 @@ def allowed_file(filename):
 
 @app.route("/upload", methods=["POST"])
 def upload_file():
-
     try:
         if "file" not in request.files:
-            return jsonify(error="Nenhum arquivo enviado"), 400
+            return jsonify({
+                "success": False,
+                "message": "Nenhum arquivo enviado"
+            }), 400
 
         file = request.files["file"]
 
         if file.filename == "":
-            return jsonify(error="Arquivo inválido"), 400
+            return jsonify({
+                "success": False,
+                "message": "Arquivo inválido"
+            }), 400
 
         if not allowed_file(file.filename):
-            return jsonify(error="Formato não permitido. Envie .xlsx"), 400
+            return jsonify({
+                "success": False,
+                "message": "Formato não permitido. Envie .xlsx"
+            }), 400
 
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         original = file.filename.replace(" ", "_")
@@ -44,15 +54,23 @@ def upload_file():
         save_path = os.path.join(UPLOAD_FOLDER, final_name)
         file.save(save_path)
 
-        return jsonify(
-            message="Upload realizado com sucesso!",
-            file_path=save_path,
-            saved_as=final_name
-        ), 200
+        return jsonify({
+            "success": True,
+            "message": "Upload realizado com sucesso!",
+            "data": {
+                "file_path": save_path,
+                "saved_as": final_name
+            }
+        }), 200
 
     except Exception as e:
         print("ERRO NO UPLOAD:", e)
-        return jsonify(error=str(e)), 500
+        return jsonify({
+            "success": False,
+            "message": "Erro interno no servidor",
+            "error": str(e)
+        }), 500
+
 
 
 
