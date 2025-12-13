@@ -22,18 +22,6 @@ def allowed_file(filename):
 
 
 
-@app.route("/")
-def index():
-    return render_template("index.html") 
-
-
-@app.route("/consulta")
-def consulta_view():
-    """Renderiza a página com a tabela de consulta."""
-    return render_template("dash.html")
-
-
-
 @app.route("/upload", methods=["POST"])
 def upload_file():
 
