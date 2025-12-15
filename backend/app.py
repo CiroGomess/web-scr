@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, request, jsonify
 import os
 import asyncio
 from runner import main  # importa sua função Playwright
@@ -21,7 +21,6 @@ ALLOWED_EXTENSIONS = {"xlsx"}
 
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
-
 
 
 @app.route("/upload", methods=["POST"])
@@ -73,8 +72,6 @@ def upload_file():
 
 
 
-
-
 @app.route("/processar", methods=["POST"])
 def processar():
 
@@ -104,9 +101,6 @@ def processar():
     except Exception as e:
         print("ERRO NO PROCESSAMENTO:", e)
         return jsonify(error=f"Erro ao processar: {str(e)}"), 500
-    
-
-
 @app.route("/produtos/consultar", methods=["GET"])
 def consultar_produtos_recentes():
     """

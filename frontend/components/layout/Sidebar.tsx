@@ -42,7 +42,7 @@ export default function Sidebar() {
                 width: drawerWidth,
                 [`& .MuiDrawer-paper`]: {
                     width: drawerWidth,
-                    backgroundColor: "#f0f0f0", // exemplo: slate corporativo
+                    backgroundColor: "#ffffff", // exemplo: slate corporativo
                     color: "#444444",
                     borderRight: "1px solid #e5e7eb",
                 },
