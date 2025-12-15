@@ -2,3 +2,5 @@ Flask
 playwright
 openpyxl
 asyncio
+psycopg2-binary
+python-dotenv
