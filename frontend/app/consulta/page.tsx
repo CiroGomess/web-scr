@@ -52,16 +52,36 @@ export default function ConsultaPage() {
 
   async function carregar() {
     setLoading(true);
+
     const result = await services("/produtos/consultar", { method: "GET" });
 
     if (result?.success) {
-      setProdutos(result.data.dados_lote.itens || []);
+      const itens = result.data.dados_lote.itens || [];
+
+      const itensNormalizados = itens.map((produto: Produto) => {
+        if (!produto.regioes || !Array.isArray(produto.regioes)) {
+          return produto;
+        }
+
+        // 🔹 FILTRA APENAS RJ e ES
+        const regioesFiltradas = produto.regioes.filter(
+          (r) => r.uf === "RJ" || r.uf === "ES"
+        );
+
+        return {
+          ...produto,
+          regioes: regioesFiltradas.length > 0 ? regioesFiltradas : null,
+        };
+      });
+
+      setProdutos(itensNormalizados);
     } else {
       alert("Erro ao carregar produtos");
     }
 
     setLoading(false);
   }
+
 
 
 
