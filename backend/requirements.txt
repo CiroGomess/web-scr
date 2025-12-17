@@ -4,3 +4,4 @@ openpyxl
 asyncio
 psycopg2-binary
 python-dotenv
+playwright-stealth
