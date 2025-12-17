@@ -1,12 +1,12 @@
 import asyncio
 from playwright.async_api import async_playwright
 # Troque aqui para testar o Fornecedor 3
-from controllers.fornecedores.Fornecedor3Controller import login_acaraujo
+from controllers.fornecedores.Fornecedor5Controller import login_jahu
 
 async def testar_acesso():
-    print("🚀 Iniciando teste de login AC ARAUJO...")
+    print("🚀 Iniciando teste de login FORNECEDOR 5...")
     async with async_playwright() as p:
-        browser, context, page = await login_acaraujo(p)
+        browser, context, page = await login_jahu(p)
         
         if page:
             print(f"✅ Sucesso! Logado em: {page.url}")
