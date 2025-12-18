@@ -1,448 +1,191 @@
 import asyncio
+import re
+import os
+import json
+from datetime import datetime
 
-
-
-# ============================================================
-# 🔧 Converte "R$ 1.234,50" → 1234.50
-# ============================================================
+# ===================== AUXILIARES DE FORMATAÇÃO ===================== #
 def clean_price(preco_str):
-    if not preco_str:
-        return None
-    preco = preco_str.replace("R$", "").strip()
-    preco = preco.replace(".", "")
+    if not preco_str: return 0.0
+    preco = re.sub(r'[^\d,]', '', preco_str)
     preco = preco.replace(",", ".")
-    try:
-        return float(preco)
-    except:
-        return None
+    try: return float(preco)
+    except: return 0.0
 
-
-# ============================================================
-# 🔧 Formata 1234.5 → "R$ 1.234,50"
-# ============================================================
 def format_brl(valor):
-    if valor is None:
-        return None
+    if valor is None or valor == 0: return "R$ 0,00"
     return "R$ " + f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-
-# ============================================================
-# 🔍 BUSCAR PRODUTO
-# ============================================================
-async def buscar_produto(page, codigo, quantidade=1):
-
-    print(f"\n🔎 Buscando código: {codigo} — Quantidade desejada: {quantidade}")
-
-    await page.wait_for_selector("input[name='src'][formcontrolname='search']:visible", timeout=20000)
-
-    campo_busca = page.locator("input[name='src'][formcontrolname='search']:visible")
-    await campo_busca.fill("")
-    await campo_busca.fill(str(codigo))
-
-    await asyncio.sleep(0.7)
-
-    btn = page.locator("button.btn-search:visible")
-    await btn.click()
-
-    print("➡ Pesquisa enviada. Aguardando resultados...")
-    await page.wait_for_load_state("networkidle")
-    print("✔ Página carregada:", page.url)
-
-
-# ============================================================
-# 📦 EXTRAIR DADOS DO PRODUTO
-# ============================================================
-async def extrair_dados_produto(page, quantidade=1):
-
-    print("\n📦 Extraindo dados do produto...")
-
-    # =======================================================
-    # 1) Sem resultado
-    # =======================================================
-    no_result = page.locator("h3:has-text('Não encontramos nenhum resultado')")
-    if await no_result.count() > 0:
-        print("❌ Produto não encontrado!")
-
-        dados = {
-            "codigo": None,
-            "nome": None,
-            "marca": None,
-            "imagem": None,
-
-            "preco": None,
-            "preco_num": None,
-            "preco_formatado": None,
-
-            "valor_total": None,
-            "valor_total_formatado": None,
-
-            "uf": None,
-            "disponivel": False,
-            "status": "Não encontrado",
-
-            "qtdSolicitada": quantidade,
-            "qtdDisponivel": 0,
-            "podeComprar": False,
-            "mensagem": "Nenhum resultado encontrado",
-            "regioes": None
+# ===================== BLOQUEIOS E TUTORIAIS ===================== #
+async def desativar_tutoriais_js(page):
+    try:
+        dados_tutoriais = {
+            "tutorial/catalogo/index": ["ok-v1", "ok-v0", "ok-v0"],
+            "tutorial/home/index": ["ok-v1", "ok-v2", "ok-v1"]
         }
-        
-        return dados
+        await page.evaluate(f"localStorage.setItem('tutoriais', '{json.dumps(dados_tutoriais)}');")
+    except: pass
 
-    # =======================================================
-    # 2) Encontrar o card
-    # =======================================================
-    card_locator = page.locator("isthmus-produto-b2b-card")
+async def fechar_bloqueios_obrigatorio(page):
+    try:
+        await page.evaluate("""
+            document.querySelectorAll('.driver-popover, .driver-fix-stacking, .ins-layout-wrapper, .modal-backdrop')
+                    .forEach(el => el.remove());
+            document.body.classList.remove('driver-pinnable-post-fixed');
+            document.body.style.overflow = 'auto';
+        """)
+    except: pass
+
+# ===================== LÓGICA DE BUSCA ===================== #
+async def buscar_produto(page, codigo):
+    selector_busca = "input#search-prod"
+    await page.wait_for_selector(selector_busca, timeout=20000)
+    await desativar_tutoriais_js(page)
+    await fechar_bloqueios_obrigatorio(page)
+    
+    campo_busca = page.locator(selector_busca)
+    await campo_busca.click()
+    await page.keyboard.press("Control+A")
+    await page.keyboard.press("Backspace")
+    await campo_busca.fill(str(codigo))
+    await page.keyboard.press("Enter")
+    
+    print(f"⌛ Pesquisando {codigo}... aguardando 3s.")
+    await asyncio.sleep(3) 
+    
+    try:
+        # Espera a tabela atualizar
+        await page.wait_for_selector("table tbody tr.odd, table tbody tr.even, .dataTables_empty", timeout=10000)
+    except: pass
+
+# ===================== EXTRAÇÃO DIRETA DA TABELA (TR) ===================== #
+async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1):
+    await fechar_bloqueios_obrigatorio(page)
+
+    # 1. Verifica se o produto foi encontrado
+    nao_encontrado = await page.locator(".dataTables_empty, h3:has-text('encontramos')").count() > 0
+    
+    if nao_encontrado:
+        print(f"❌ {codigo_solicitado} não encontrado.")
+        # Retorna estrutura vazia no padrão, mas preserva o código
+        res_vazio = {
+            "codigo": codigo_solicitado, "nome": None, "marca": None, "imagem": None,
+            "preco": "R$ 0,00", "preco_num": 0.0, "preco_formatado": "R$ 0,00",
+            "valor_total": 0.0, "valor_total_formatado": "R$ 0,00",
+            "uf": "RJ", "qtdSolicitada": quantidade_solicitada, "qtdDisponivel": 0,
+            "podeComprar": False, "disponivel": False, "status": "Não encontrado",
+            "regioes": []
+        }
+        return res_vazio
+
+    # 2. Localiza a primeira linha real da tabela
+    tr = page.locator("table tbody tr.odd, table tbody tr.even").first
+    if await tr.count() == 0: return None
 
     try:
-        await card_locator.first.wait_for(timeout=15000)
-    except:
-        print("❌ Nenhum card carregou.")
-        dados = {
-            "codigo": None,
-            "nome": None,
-            "marca": None,
-            "imagem": None,
-            "preco": None,
-            "preco_num": None,
-            "preco_formatado": None,
-            "valor_total": None,
-            "valor_total_formatado": None,
-            "uf": None,
-            "disponivel": False,
-            "status": "Erro",
-            "qtdSolicitada": quantidade,
-            "qtdDisponivel": 0,
-            "podeComprar": False,
-            "mensagem": "Nenhum card encontrado",
-            "regioes": None
-        }
+        # Extração de dados via seletores da linha (TR)
+        marca_text = (await tr.locator("td.dtr-control span.text-truncate").inner_text()).strip()
+        nome_text = (await tr.locator("td.dtr-control span.font-weight-bold").inner_text()).strip()
+        codigo_fab = (await tr.locator("td.max-w-175px span").inner_text()).strip()
         
-        return dados
-
-    card = card_locator.first
-
-    # =======================================================
-    # 3) Esperar spinner sumir
-    # =======================================================
-    spinner = card.locator("mat-spinner")
-    if await spinner.count() > 0:
-        print("⏳ Aguardando preço carregar…")
-        try:
-            await spinner.wait_for(state="detached", timeout=10000)
-        except:
-            print("⚠ Spinner não sumiu — possivelmente indisponível.")
-
-    # =======================================================
-    # 4) Campos básicos
-    # =======================================================
-    nome = (await card.locator(".card-nome").inner_text()).strip()
-
-    marca_el = card.locator(".nome-marca")
-    marca = (await marca_el.inner_text()).strip() if await marca_el.count() else ""
-
-    imagem = await card.locator(".card-imagem img").get_attribute("src")
-
-    titulo = await card.locator(".card-imagem a").get_attribute("title")
-    codigo = titulo.split("(Cód.:")[-1].replace(")", "").strip() if "(Cód.:" in titulo else None
-
-    # =======================================================
-    # 5) MULTI-UF
-    # =======================================================
-    regioes_info = []
-    lista_precos_li = card.locator(".card-preco ul.precos li")
-    total_li = await lista_precos_li.count()
-
-    qtd_input = card.locator("input[aria-label='Quantidade do produto']")
-    botao_plus = card.locator("button[aria-label='Aumentar quantidade do produto']")
-    alerta = page.locator("div.alert.alert-success")
-
-    # -------------------------------------------------------
-    # SE EXISTEM MÚLTIPLAS UFs
-    # -------------------------------------------------------
-    if total_li > 0:
-
-        for idx in range(total_li):
-
-            li = lista_precos_li.nth(idx)
-
-            # Seleciona UF
-            await li.click()
-            await asyncio.sleep(0.3)
-
-            # Identifica UF
-            uf_txt = None
-            uf_span = li.locator("span.text-muted.small")
-            if await uf_span.count() > 0:
-                uf_txt = (await uf_span.inner_text()).strip().upper()
-
-            # Identifica preço desta UF
-            strong_el = li.locator("strong")
-            tem_preco_uf = await strong_el.count() > 0
-            preco_uf = (await strong_el.inner_text()).strip() if tem_preco_uf else None
-
-            # Se não houver preço → indisponível
-            if not tem_preco_uf or not preco_uf:
-                regioes_info.append({
-                    "uf": uf_txt,
-                    "preco": None,
-                    "preco_num": None,
-                    "preco_formatado": None,
-                    "qtdSolicitada": quantidade,
-                    "qtdDisponivel": 0,
-                    "valor_total": None,
-                    "valor_total_formatado": None,
-                    "podeComprar": False,
-                    "mensagem": "Indisponível",
-                    "disponivel": False
-                })
-                continue
-
-            # ----------------------------------------------
-            # RESET QUANTIDADE SEMPRE QUE TROCAR DE UF
-            # ----------------------------------------------
-            try:
-                await qtd_input.fill("1")
-                await asyncio.sleep(0.2)
-            except:
-                pass
-
-            # limpar alertas antigos
-            try:
-                await page.evaluate("""
-                    document.querySelectorAll('div.alert.alert-success')
-                    .forEach(el => el.remove());
-                """)
-            except:
-                pass
-
-            qtd_disponivel_reg = 1
-            mensagem_reg = None
-            pode_comprar_reg = True
-
-            # ----------------------------------------------
-            # Clicar até atingir quantidade solicitada OU alerta
-            # ----------------------------------------------
-            for i in range(quantidade - 1):
-
-                await botao_plus.click()
-                await asyncio.sleep(0.25)
-
-                # ALERTA → estoque insuficiente
-                if await alerta.count() > 0:
-                    texto_alerta = (await alerta.inner_text()).strip()
-                    num = "".join(c for c in texto_alerta if c.isdigit())
-
-                    qtd_disponivel_reg = int(num) if num else qtd_disponivel_reg
-                    mensagem_reg = texto_alerta
-                    pode_comprar_reg = False
-                    break
-
-                # quantidade aumentou normalmente
-                qtd_disponivel_reg = i + 2  # pois inicia em 1
-
-            valor_unitario_reg = clean_price(preco_uf)
-            valor_total_reg = (
-                valor_unitario_reg * qtd_disponivel_reg if valor_unitario_reg else None
-            )
-
-            regioes_info.append({
-                "uf": uf_txt,
-                "preco": preco_uf,
-                "preco_num": valor_unitario_reg,
-                "preco_formatado": format_brl(valor_unitario_reg),
-                "qtdSolicitada": quantidade,
-                "qtdDisponivel": qtd_disponivel_reg,
-                "valor_total": valor_total_reg,
-                "valor_total_formatado": format_brl(valor_total_reg),
-                "podeComprar": pode_comprar_reg,
-                "mensagem": mensagem_reg,
-                "disponivel": bool(valor_unitario_reg)
-            })
-
-        # ---------------------------------------------------
-        # Consolidar com base na 1ª UF
-        # ---------------------------------------------------
-        primeira = regioes_info[0]
-
-        dados = {
-            "codigo": codigo,
-            "nome": nome,
-            "marca": marca,
-            "imagem": imagem,
-
-            "preco": primeira["preco"],
-            "preco_num": primeira["preco_num"],
-            "preco_formatado": primeira["preco_formatado"],
-
-            "valor_total": primeira["valor_total"],
-            "valor_total_formatado": primeira["valor_total_formatado"],
-
-            "uf": primeira["uf"],
-            "qtdSolicitada": quantidade,
-            "qtdDisponivel": primeira["qtdDisponivel"],
-            "podeComprar": primeira["podeComprar"],
-            "mensagem": primeira["mensagem"],
-
-            "disponivel": any(r["disponivel"] for r in regioes_info),
-            "status": "Disponível" if any(r["disponivel"] for r in regioes_info) else "Indisponível",
-
-            "regioes": regioes_info
-        }
-
+        # Imagem
+        link_img = await tr.locator("img.h-100").first.get_attribute("src")
+        if link_img and not link_img.startswith("http"):
+            link_img = "https://compreonline.roles.com.br" + link_img
         
-        return dados
-
-    # =======================================================
-    # 6) Fallback sem multi-UF (como antes)
-    # =======================================================
-    preco_el = card.locator(".card-preco strong")
-    tem_preco = await preco_el.count() > 0
-    preco = (await preco_el.inner_text()).strip() if tem_preco else None
-
-    spans = card.locator("span.text-muted.small")
-    df_uf = None
-    indisponivel = not tem_preco
-
-    for i in range(await spans.count()):
-        txt = (await spans.nth(i).inner_text()).strip().lower()
-        if "indisponível" in txt:
-            indisponivel = True
-        else:
-            df_uf = txt.upper()
-
-    qtd_disponivel = 1
-    mensagem = None
-    pode_comprar = True
-
-    if not indisponivel:
-        for i in range(quantidade - 1):
-            await botao_plus.click()
-            await asyncio.sleep(0.2)
-
-            if await alerta.count() > 0:
-                texto = (await alerta.inner_text()).strip()
-                num = "".join(c for c in texto if c.isdigit())
-                qtd_disponivel = int(num) if num else 1
-                mensagem = texto
-                pode_comprar = False
-                break
-            qtd_disponivel = i + 2
-    else:
+        # Preço (Pegamos o preço da coluna dt-right)
+        preco_raw = await tr.locator("td.dt-right span.font-size-h5").last.inner_text()
+        preco_num = clean_price(preco_raw)
+        
+        # Disponibilidade: Se houver botão de "Avise-me" (flaticon-bell), está indisponível
+        # Se houver input de quantidade (vit-qtde-table), está disponível
+        tem_estoque = await tr.locator("input.vit-qtde-table").count() > 0
+        
         qtd_disponivel = 0
-        pode_comprar = False
-        mensagem = "Produto indisponível"
-
-    valor_unitario = clean_price(preco)
-    valor_total = valor_unitario * qtd_disponivel if valor_unitario else None
-
-    dados = {
-        "codigo": codigo,
-        "nome": nome,
-        "marca": marca,
-        "imagem": imagem,
-
-        "preco": preco,
-        "preco_num": valor_unitario,
-        "preco_formatado": format_brl(valor_unitario),
-
-        # "valor_total": valor_total,
-        # "valor_total_formatado": format_brl(valor_total),
-
+        if tem_estoque:
+            # Como estamos na tabela, o input costuma vir com valor 1 por padrão
+            # Assumimos 999 ou 1, pois a tabela não diz o número exato sem abrir o modal
+            # mas para o seu padrão JSON, colocaremos 1 se disponível.
+            qtd_disponivel = 1 
         
-        "disponivel": not indisponivel,
-        "status": "Disponível" if not indisponivel else "Indisponível",
+    except Exception as e:
+        print(f"⚠ Erro na extração da linha: {e}")
+        return None
 
-        "qtdSolicitada": quantidade,
+    # 3. Consolidação dos dados (Padrão RJ solicitado)
+    valor_total = preco_num * quantidade_solicitada
+    pode_comprar = tem_estoque and preco_num > 0
+
+    # Estrutura interna de regiões
+    regiao_rj = {
+        "uf": "RJ",
+        "preco": preco_raw.strip(),
+        "preco_num": preco_num,
+        "preco_formatado": format_brl(preco_num),
+        "qtdSolicitada": quantidade_solicitada,
         "qtdDisponivel": qtd_disponivel,
+        "valor_total": valor_total,
+        "valor_total_formatado": format_brl(valor_total),
         "podeComprar": pode_comprar,
-        "mensagem": mensagem,
-
-        "regioes": None
+        "mensagem": None if pode_comprar else "Produto sem estoque imediato",
+        "disponivel": tem_estoque
     }
 
-   
-    return dados
+    # Estrutura Principal do JSON
+    return {
+        "codigo": codigo_fab,
+        "nome": nome_text,
+        "marca": marca_text,
+        "imagem": link_img,
+        "preco": preco_raw.strip(),
+        "preco_num": preco_num,
+        "preco_formatado": format_brl(preco_num),
+        "valor_total": valor_total,
+        "valor_total_formatado": format_brl(valor_total),
+        "uf": "RJ",
+        "qtdSolicitada": quantidade_solicitada,
+        "qtdDisponivel": qtd_disponivel,
+        "podeComprar": pode_comprar,
+        "mensagem": regiao_rj["mensagem"],
+        "disponivel": tem_estoque,
+        "status": "Disponível" if tem_estoque else "Indisponível",
+        "regioes": [regiao_rj]
+    }
 
+# ===================== SALVAMENTO E EXECUTOR SEQUENCIAL ===================== #
+def salvar_json_final(lista_itens):
+    agora = datetime.now()
+    dados_finais = {
+        "data_processamento_lote": agora.strftime("%d/%m/%Y %H:%M:%S"),
+        "total_itens": len(lista_itens),
+        "itens": lista_itens
+    }
+    pasta = "data/hist_dados"
+    if not os.path.exists(pasta): os.makedirs(pasta)
+    caminho = os.path.join(pasta, f"resultado_roles_{agora.strftime('%Y%m%d_%H%M%S')}.json")
+    with open(caminho, 'w', encoding='utf-8') as f:
+        json.dump(dados_finais, f, indent=4, ensure_ascii=False)
+    return caminho
 
-# ============================================================
-# 🔁 PROCESSAR LISTA DE PRODUTOS (SEQUENCIAL)
-# ============================================================
-async def processar_lista_produtos(page, lista_produtos):
+async def processar_lista_produtos_sequencial(page, lista_produtos):
+    itens_extraidos = []
+    # Início: garante que está na página de busca
+    if page.url == "about:blank" or "compreonline" not in page.url:
+        await page.goto("https://compreonline.roles.com.br/", wait_until="networkidle")
+    
+    for idx, item in enumerate(lista_produtos):
+        print(f"\n📦 [{idx+1}/{len(lista_produtos)}] Processando Código: {item['codigo']}")
+        try:
+            await buscar_produto(page, item["codigo"])
+            resultado = await extrair_dados_produto(page, item["codigo"], item["quantidade"])
+            if resultado:
+                itens_extraidos.append(resultado)
+            await asyncio.sleep(2) 
+        except Exception as e:
+            print(f"❌ Erro crítico no loop: {e}")
+            await page.reload(wait_until="networkidle")
 
-    resultados = []
-
-    for item in lista_produtos:
-        codigo = item["codigo"]
-        quantidade = item["quantidade"]
-
-        print("\n======================================")
-        print(f"▶ PROCESSANDO {codigo} (qtd: {quantidade})")
-        print("======================================\n")
-
-        await buscar_produto(page, codigo, quantidade)
-        dados = await extrair_dados_produto(page, quantidade)
-
-        resultados.append(dados)
-        await asyncio.sleep(1)
-
-    return resultados
-
-
-# ============================================================
-# 🔥 MULTI-ABAS / BATCH PARALELO
-# ============================================================
-async def processar_batch(context, batch):
-
-    tarefas = []
-
-    for item in batch:
-        codigo = item["codigo"]
-        qtd = item["quantidade"]
-
-        async def processar_item(codigo=codigo, qtd=qtd):
-
-            page = await context.new_page()
-
-            try:
-                await page.goto(
-                    "https://www.portalcomdip.com.br/comdip/compras/pesquisa",
-                    wait_until="networkidle",
-                    timeout=30000
-                )
-
-                await buscar_produto(page, codigo, qtd)
-                dados = await extrair_dados_produto(page, qtd)
-
-            except Exception as e:
-                dados = {"codigo": codigo, "erro": str(e)}
-
-            finally:
-                await page.close()
-
-            return dados
-
-        tarefas.append(processar_item())
-
-    return await asyncio.gather(*tarefas)
-
-
-# ============================================================
-# 🔁 PROCESSAR BATCHES DE 5 EM 5
-# ============================================================
-async def processar_lista_produtos_parallel(context, lista_produtos, batch_size=5):
-
-    resultados_finais = []
-
-    for i in range(0, len(lista_produtos), batch_size):
-
-        batch = lista_produtos[i:i + batch_size]
-
-        print("\n======================================")
-        print(f"▶ PROCESSANDO LOTE {i//batch_size + 1} ({len(batch)} itens)")
-        print("======================================\n")
-
-        resultados = await processar_batch(context, batch)
-        resultados_finais.extend(resultados)
-
-    return resultados_finais
+    if itens_extraidos:
+        salvar_json_final(itens_extraidos)
+        print(f"✅ Processamento finalizado com {len(itens_extraidos)} itens.")
+    return itens_extraidos
