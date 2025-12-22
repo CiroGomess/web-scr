@@ -1,71 +1,149 @@
 import asyncio
-import random
+import re
+import os
+import json
+from datetime import datetime
 
-# ===================== CONFIG ===================== #
+# ===================== AUXILIARES DE FORMATAÇÃO ===================== #
+def clean_price(preco_str):
+    if not preco_str: return 0.0
+    preco = re.sub(r'[^\d,]', '', preco_str)
+    preco = preco.replace(",", ".")
+    try: return float(preco)
+    except: return 0.0
 
-LOGIN_URL_ACARAUJO = "https://portal.acaraujo.com.br/entrar"
-HOME_URL_ACARAUJO = "https://portal.acaraujo.com.br/"
+def format_brl(valor):
+    if valor is None or valor == 0: return "R$ 0,00"
+    return "R$ " + f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-USUARIO_AC = "autopecasvieira@gmail.com"
-SENHA_AC = "Vieira1975@"
-
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
-]
-
-HEADLESS = False 
-
-# ===================== LOGIN AC ARAUJO ===================== #
-
-async def login_acaraujo(p):
-    print("\n🔐 Iniciando LOGIN no fornecedor AC ARAÚJO...")
-
-    browser = await p.chromium.launch(
-        headless=HEADLESS,
-        slow_mo=200 
-    )
-
-    context = await browser.new_context(
-        user_agent=random.choice(USER_AGENTS),
-        viewport={'width': 1366, 'height': 768}
-    )
-
-    page = await context.new_page()
-
+# ===================== AUXILIAR: FECHAR POPUP ===================== #
+async def fechar_popup_acaraujo(page):
     try:
-        # Acessa a página de login
-        await page.goto(LOGIN_URL_ACARAUJO, wait_until="networkidle", timeout=60000)
+        popup = page.locator("#popup")
+        if await popup.is_visible():
+            print("🍪 Popup de atualização detectado. Fechando...")
+            await popup.locator("button:has-text('Fechar')").click()
+            await asyncio.sleep(1)
+    except Exception:
+        pass
 
-        # Preencher Usuário
-        # Geralmente esses portais usam inputs do tipo email ou texto
-        await page.wait_for_selector("input[type='email'], input[name='email'], input[placeholder*='e-mail']", timeout=15000)
-        await page.fill("input[type='email'], input[name='email'], input[placeholder*='e-mail']", USUARIO_AC)
-        print("👤 Usuário preenchido.")
+# ===================== EXTRAÇÃO DE DADOS ===================== #
+async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1):
+    cards = page.locator(".up-produto")
+    total_cards = await cards.count()
+    
+    if total_cards == 0:
+        return {
+            "codigo": codigo_solicitado, "nome": "Não encontrado", "preco": "R$ 0,00", 
+            "uf": "RJ", "disponivel": False, "regioes": []
+        }
 
-        # Preencher Senha
-        await page.fill("input[type='password']", SENHA_AC)
-        print("🔑 Senha preenchida.")
-
-        # Clicar no botão Entrar
-        # Buscando por texto 'Entrar' ou botão do tipo submit
-        btn_entrar = page.locator("button:has-text('Entrar'), button[type='submit']")
+    for i in range(total_cards):
+        card = cards.nth(i)
         
-        print("🚀 Enviando formulário...")
-        await btn_entrar.click()
+        # Obtém o SKU para validação
+        sku_no_card = await card.locator("#produto-sku-grid b").inner_text()
+        sku_no_card = sku_no_card.strip()
 
-        # Aguarda a transição de página
-        # Portais modernos às vezes não mudam a URL na hora, então esperamos a Home carregar
-        await page.wait_for_load_state("networkidle")
-        await asyncio.sleep(3) # Tempo para processar tokens de sessão
+        # Lógica de Match (Exato ou Início do SKU)
+        if sku_no_card == codigo_solicitado or sku_no_card.startswith(codigo_solicitado):
+            try:
+                # --- CORREÇÃO DO NOME ---
+                # Buscamos o span que contém a descrição, ignorando o que tem texto "SKU:"
+                nome_selector = card.locator(".description span.ng-binding:not(:has-text('SKU:'))")
+                nome_text = (await nome_selector.inner_text()).strip()
+                
+                link_img = await card.locator("img.originalImg").first.get_attribute("src")
+                preco_raw = await card.locator(".product-price").inner_text()
+                preco_num = clean_price(preco_raw)
+                
+                status_estoque = await card.locator(".produto-status").inner_text()
+                status_estoque = status_estoque.strip()
+                
+                tem_estoque = "Indisponível" not in status_estoque
+                qtd_disponivel = 1 if tem_estoque else 0
 
-        # Verificação
-        if "/entrar" in page.url:
-            print("❌ ERRO: Login AC Araújo falhou! Verifique as credenciais.")
-            return None, None, None
+                valor_total = preco_num * quantidade_solicitada
+                pode_comprar = tem_estoque and preco_num > 0
 
-        print(f"✅ Login AC Araújo realizado com sucesso! Estamos em: {page.url}")
-        return browser, context, page
+                regiao_rj = {
+                    "uf": "RJ",
+                    "preco": preco_raw.strip(),
+                    "preco_num": preco_num,
+                    "preco_formatado": format_brl(preco_num),
+                    "qtdSolicitada": quantidade_solicitada,
+                    "qtdDisponivel": qtd_disponivel,
+                    "valor_total": valor_total,
+                    "valor_total_formatado": format_brl(valor_total),
+                    "podeComprar": pode_comprar,
+                    "mensagem": None if pode_comprar else "Sem estoque imediato",
+                    "disponivel": tem_estoque
+                }
 
-    except Exception as e:
-        print(f"❌ Ocorreu um erro no login da AC Araújo: {e}")
-        return None, None, None
+                return {
+                    "codigo": sku_no_card,
+                    "nome": nome_text,
+                    "marca": "JAHU",
+                    "imagem": link_img,
+                    "preco": preco_raw.strip(),
+                    "preco_num": preco_num,
+                    "preco_formatado": format_brl(preco_num),
+                    "valor_total": valor_total,
+                    "valor_total_formatado": format_brl(valor_total),
+                    "uf": "RJ",
+                    "qtdSolicitada": quantidade_solicitada,
+                    "qtdDisponivel": qtd_disponivel,
+                    "podeComprar": pode_comprar,
+                    "mensagem": regiao_rj["mensagem"],
+                    "disponivel": tem_estoque,
+                    "status": status_estoque,
+                    "regioes": [regiao_rj]
+                }
+            except Exception as e:
+                print(f"⚠ Erro nos detalhes do card: {e}")
+                continue
+    return None
+
+# ===================== SALVAMENTO E EXECUTOR ===================== #
+def salvar_json_final(lista_itens):
+    agora = datetime.now()
+    dados_finais = {
+        "data_processamento_lote": agora.strftime("%d/%m/%Y %H:%M:%S"),
+        "total_itens": len(lista_itens),
+        "itens": lista_itens
+    }
+    pasta = "data/hist_dados"
+    if not os.path.exists(pasta): os.makedirs(pasta)
+    caminho = os.path.join(pasta, f"resultado_acaraujo_{agora.strftime('%Y%m%d_%H%M%S')}.json")
+    with open(caminho, 'w', encoding='utf-8') as f:
+        json.dump(dados_finais, f, indent=4, ensure_ascii=False)
+    return caminho
+
+async def processar_lista_produtos_acaraujo(page, lista_produtos):
+    itens_extraidos = []
+    
+    for idx, item in enumerate(lista_produtos):
+        codigo = str(item['codigo']).strip()
+        print(f"📦 [{idx+1}/{len(lista_produtos)}] Buscando: {codigo}")
+        
+        try:
+            await fechar_popup_acaraujo(page)
+
+            campo_busca = page.locator("#search-input")
+            await campo_busca.fill("")
+            await campo_busca.type(codigo, delay=100)
+            await page.keyboard.press("Enter")
+            
+            await asyncio.sleep(2) # Espera o Angular processar a busca
+
+            resultado = await extrair_dados_produto(page, codigo, item["quantidade"])
+            if resultado:
+                itens_extraidos.append(resultado)
+                print(f"✅ Extraído: {resultado['nome']} | SKU: {resultado['codigo']}")
+
+        except Exception as e:
+            print(f"❌ Erro no loop para o código {codigo}: {e}")
+
+    if itens_extraidos:
+        salvar_json_final(itens_extraidos)
+    return itens_extraidos
