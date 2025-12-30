@@ -5,7 +5,6 @@ from runner import main  # importa sua função Playwright
 from datetime import datetime
 from flask_cors import CORS
 
-from utils.salvar_dados_processados import salvar_lista_processada 
 from controllers.dadosController import carregar_lote_mais_recente
 
 # IMPORTAÇÃO DA NOVA ROTA DE COMPARAÇÃO
@@ -85,19 +84,13 @@ def processar():
         except RuntimeError:
             loop = asyncio.get_event_loop()
             result = loop.run_until_complete(main())
-            
-        # O 'result' de main() é: {"status": "ok", "total_processado": N, "dados": [...] }
-        dados_processados = result.get("dados", [])
+    
         
-        # 🎯 PARTE CHAVE: Salva a lista COMPLETA de uma só vez
-        caminho_arquivo_lote = salvar_lista_processada(dados_processados)
-        # -------------------------------------------------------------
 
         # 4. Retorna a resposta JSON completa
         return jsonify({
             "message": "Processamento concluído e LOTE de dados salvo em um único arquivo!",
             "total_processado": result.get("total_processado", 0),
-            "caminho_arquivo_lote": caminho_arquivo_lote, 
             "resultado": result # Retorna o resultado completo original do runner
         })
 

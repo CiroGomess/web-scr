@@ -1,7 +1,4 @@
 import asyncio
-import re
-import os
-import json
 from datetime import datetime
 
 # ===================== IMPORTAÇÃO DO SERVIÇO DE BANCO ===================== #
@@ -13,7 +10,7 @@ except ImportError:
     salvar_lote_postgres = None
 
 # ============================================================
-# 🔧 PREPARAÇÃO DE DADOS E SALVAMENTO (NOVA PARTE)
+# 🔧 PREPARAÇÃO DE DADOS (SEM SALVAR JSON)
 # ============================================================
 def preparar_dados_finais(lista_itens):
     """
@@ -21,30 +18,12 @@ def preparar_dados_finais(lista_itens):
     """
     agora = datetime.now()
     return {
-        "data_processamento_lote": agora.strftime("%d/%m/%Y %H:%M:%S"), # String para JSON
+        "data_processamento_lote": agora.strftime("%d/%m/%Y %H:%M:%S"), # String para logs/visualização
         "data_obj": agora, # Objeto Datetime para PostgreSQL
         "fornecedror": "portalcomdip", # <--- NOME DO FORNECEDOR
         "total_itens": len(lista_itens),
         "itens": lista_itens
     }
-
-def salvar_json_local(dados_finais):
-    """Salva um backup local em JSON antes de enviar ao banco"""
-    pasta = "data/hist_dados"
-    if not os.path.exists(pasta): os.makedirs(pasta)
-    
-    # Remove objeto datetime para salvar no JSON sem erro
-    dados_para_json = dados_finais.copy()
-    if "data_obj" in dados_para_json:
-        del dados_para_json["data_obj"]
-
-    nome_arq = f"resultado_portalcomdip_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    caminho = os.path.join(pasta, nome_arq)
-    
-    with open(caminho, 'w', encoding='utf-8') as f:
-        json.dump(dados_para_json, f, indent=4, ensure_ascii=False)
-    
-    return caminho
 
 # ============================================================
 # 🔧 Converte "R$ 1.234,50" → 1234.50
@@ -60,7 +39,6 @@ def clean_price(preco_str):
     except:
         return None
 
-
 # ============================================================
 # 🔧 Formata 1234.5 → "R$ 1.234,50"
 # ============================================================
@@ -69,12 +47,10 @@ def format_brl(valor):
         return None
     return "R$ " + f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-
 # ============================================================
 # 🔍 BUSCAR PRODUTO
 # ============================================================
 async def buscar_produto(page, codigo, quantidade=1):
-
     print(f"\n🔎 Buscando código: {codigo} — Quantidade desejada: {quantidade}")
 
     await page.wait_for_selector("input[name='src'][formcontrolname='search']:visible", timeout=20000)
@@ -92,12 +68,10 @@ async def buscar_produto(page, codigo, quantidade=1):
     await page.wait_for_load_state("networkidle")
     print("✔ Página carregada:", page.url)
 
-
 # ============================================================
 # 📦 EXTRAIR DADOS DO PRODUTO
 # ============================================================
 async def extrair_dados_produto(page, quantidade=1):
-
     print("\n📦 Extraindo dados do produto...")
 
     # =======================================================
@@ -112,25 +86,20 @@ async def extrair_dados_produto(page, quantidade=1):
             "nome": None,
             "marca": None,
             "imagem": None,
-
             "preco": None,
             "preco_num": None,
             "preco_formatado": None,
-
             "valor_total": None,
             "valor_total_formatado": None,
-
             "uf": None,
             "disponivel": False,
             "status": "Não encontrado",
-
             "qtdSolicitada": quantidade,
             "qtdDisponivel": 0,
             "podeComprar": False,
             "mensagem": "Nenhum resultado encontrado",
             "regioes": None
         }
-        
         return dados
 
     # =======================================================
@@ -161,7 +130,6 @@ async def extrair_dados_produto(page, quantidade=1):
             "mensagem": "Nenhum card encontrado",
             "regioes": None
         }
-        
         return dados
 
     card = card_locator.first
@@ -205,9 +173,7 @@ async def extrair_dados_produto(page, quantidade=1):
     # SE EXISTEM MÚLTIPLAS UFs
     # -------------------------------------------------------
     if total_li > 0:
-
         for idx in range(total_li):
-
             li = lista_precos_li.nth(idx)
 
             # Seleciona UF
@@ -242,9 +208,7 @@ async def extrair_dados_produto(page, quantidade=1):
                 })
                 continue
 
-            # ----------------------------------------------
-            # RESET QUANTIDADE SEMPRE QUE TROCAR DE UF
-            # ----------------------------------------------
+            # RESET QUANTIDADE
             try:
                 await qtd_input.fill("1")
                 await asyncio.sleep(0.2)
@@ -253,10 +217,7 @@ async def extrair_dados_produto(page, quantidade=1):
 
             # limpar alertas antigos
             try:
-                await page.evaluate("""
-                    document.querySelectorAll('div.alert.alert-success')
-                    .forEach(el => el.remove());
-                """)
+                await page.evaluate("document.querySelectorAll('div.alert.alert-success').forEach(el => el.remove());")
             except:
                 pass
 
@@ -264,31 +225,23 @@ async def extrair_dados_produto(page, quantidade=1):
             mensagem_reg = None
             pode_comprar_reg = True
 
-            # ----------------------------------------------
             # Clicar até atingir quantidade solicitada OU alerta
-            # ----------------------------------------------
             for i in range(quantidade - 1):
-
                 await botao_plus.click()
                 await asyncio.sleep(0.25)
 
-                # ALERTA → estoque insuficiente
                 if await alerta.count() > 0:
                     texto_alerta = (await alerta.inner_text()).strip()
                     num = "".join(c for c in texto_alerta if c.isdigit())
-
                     qtd_disponivel_reg = int(num) if num else qtd_disponivel_reg
                     mensagem_reg = texto_alerta
                     pode_comprar_reg = False
                     break
-
-                # quantidade aumentou normalmente
-                qtd_disponivel_reg = i + 2  # pois inicia em 1
+                
+                qtd_disponivel_reg = i + 2
 
             valor_unitario_reg = clean_price(preco_uf)
-            valor_total_reg = (
-                valor_unitario_reg * qtd_disponivel_reg if valor_unitario_reg else None
-            )
+            valor_total_reg = (valor_unitario_reg * qtd_disponivel_reg if valor_unitario_reg else None)
 
             regioes_info.append({
                 "uf": uf_txt,
@@ -304,9 +257,7 @@ async def extrair_dados_produto(page, quantidade=1):
                 "disponivel": bool(valor_unitario_reg)
             })
 
-        # ---------------------------------------------------
         # Consolidar com base na 1ª UF
-        # ---------------------------------------------------
         primeira = regioes_info[0]
 
         dados = {
@@ -314,46 +265,36 @@ async def extrair_dados_produto(page, quantidade=1):
             "nome": nome,
             "marca": marca,
             "imagem": imagem,
-
             "preco": primeira["preco"],
             "preco_num": primeira["preco_num"],
             "preco_formatado": primeira["preco_formatado"],
-
             "valor_total": primeira["valor_total"],
             "valor_total_formatado": primeira["valor_total_formatado"],
-
             "uf": primeira["uf"],
             "qtdSolicitada": quantidade,
             "qtdDisponivel": primeira["qtdDisponivel"],
             "podeComprar": primeira["podeComprar"],
             "mensagem": primeira["mensagem"],
-
             "disponivel": any(r["disponivel"] for r in regioes_info),
             "status": "Disponível" if any(r["disponivel"] for r in regioes_info) else "Indisponível",
-
             "regioes": regioes_info
         }
-
-        
         return dados
 
     # =======================================================
-    # 6) Fallback sem multi-UF (como antes)
+    # 6) Fallback sem multi-UF (CORREÇÃO APLICADA AQUI)
     # =======================================================
     preco_el = card.locator(".card-preco strong")
     tem_preco = await preco_el.count() > 0
     preco = (await preco_el.inner_text()).strip() if tem_preco else None
 
     spans = card.locator("span.text-muted.small")
-    df_uf = None
     indisponivel = not tem_preco
 
     for i in range(await spans.count()):
         txt = (await spans.nth(i).inner_text()).strip().lower()
         if "indisponível" in txt:
             indisponivel = True
-        else:
-            df_uf = txt.upper()
 
     qtd_disponivel = 1
     mensagem = None
@@ -385,101 +326,62 @@ async def extrair_dados_produto(page, quantidade=1):
         "nome": nome,
         "marca": marca,
         "imagem": imagem,
-
         "preco": preco,
         "preco_num": valor_unitario,
         "preco_formatado": format_brl(valor_unitario),
-
-        # "valor_total": valor_total,
-        # "valor_total_formatado": format_brl(valor_total),
-
+        
+        # 🟢 AQUI ESTAVA O ERRO (ESTAVAM COMENTADOS)
+        "valor_total": valor_total,
+        "valor_total_formatado": format_brl(valor_total),
         
         "disponivel": not indisponivel,
         "status": "Disponível" if not indisponivel else "Indisponível",
-
         "qtdSolicitada": quantidade,
         "qtdDisponivel": qtd_disponivel,
         "podeComprar": pode_comprar,
         "mensagem": mensagem,
-
         "regioes": None
     }
 
-   
     return dados
-
-
-# ============================================================
-# 🔁 PROCESSAR LISTA DE PRODUTOS (SEQUENCIAL)
-# ============================================================
-async def processar_lista_produtos(page, lista_produtos):
-
-    resultados = []
-
-    for item in lista_produtos:
-        codigo = item["codigo"]
-        quantidade = item["quantidade"]
-
-        print("\n======================================")
-        print(f"▶ PROCESSANDO {codigo} (qtd: {quantidade})")
-        print("======================================\n")
-
-        await buscar_produto(page, codigo, quantidade)
-        dados = await extrair_dados_produto(page, quantidade)
-
-        resultados.append(dados)
-        await asyncio.sleep(1)
-
-    return resultados
 
 
 # ============================================================
 # 🔥 MULTI-ABAS / BATCH PARALELO
 # ============================================================
 async def processar_batch(context, batch):
-
     tarefas = []
-
     for item in batch:
         codigo = item["codigo"]
         qtd = item["quantidade"]
 
         async def processar_item(codigo=codigo, qtd=qtd):
-
             page = await context.new_page()
-
             try:
                 await page.goto(
                     "https://www.portalcomdip.com.br/comdip/compras/pesquisa",
                     wait_until="networkidle",
                     timeout=30000
                 )
-
                 await buscar_produto(page, codigo, qtd)
                 dados = await extrair_dados_produto(page, qtd)
-
             except Exception as e:
                 dados = {"codigo": codigo, "erro": str(e)}
-
             finally:
                 await page.close()
-
             return dados
 
         tarefas.append(processar_item())
-
     return await asyncio.gather(*tarefas)
 
 
 # ============================================================
-# 🔁 PROCESSAR BATCHES DE 5 EM 5 (COM DB)
+# 🔁 PROCESSAR BATCHES (COM DB, SEM JSON)
 # ============================================================
 async def processar_lista_produtos_parallel(context, lista_produtos, batch_size=5):
-
     resultados_finais = []
 
     for i in range(0, len(lista_produtos), batch_size):
-
         batch = lista_produtos[i:i + batch_size]
 
         print("\n======================================")
@@ -490,21 +392,17 @@ async def processar_lista_produtos_parallel(context, lista_produtos, batch_size=
         resultados_finais.extend(resultados)
 
     # ==========================================================
-    # 👇👇 PARTE NOVA: SALVAR NO BANCO DE DADOS E JSON 👇👇
+    # 👇👇 SALVAR NO BANCO DE DADOS (SEM JSON) 👇👇
     # ==========================================================
     if resultados_finais:
         # 1. Filtra itens com erro
         validos = [r for r in resultados_finais if r and "erro" not in r and r.get("codigo")]
         
         if validos:
-            # 2. Prepara os dados (Nome do fornecedor: "portalcomdip")
+            # 2. Prepara os dados
             dados_completos = preparar_dados_finais(validos)
 
-            # 3. Salva backup JSON
-            caminho_json = salvar_json_local(dados_completos)
-            print(f"\n📂 Backup JSON salvo: {caminho_json}")
-
-            # 4. Salva no PostgreSQL
+            # 3. Salva no PostgreSQL (SEM SALVAR JSON ANTES)
             if salvar_lote_postgres:
                 print("⏳ Enviando dados para o PostgreSQL...")
                 sucesso = salvar_lote_postgres(dados_completos)
@@ -513,6 +411,6 @@ async def processar_lista_produtos_parallel(context, lista_produtos, batch_size=
                 else:
                     print("❌ Falha ao salvar no banco.")
             else:
-                print("ℹ️ Salvamento de banco pulado.")
+                print("ℹ️ Salvamento de banco pulado (módulo não encontrado).")
 
     return resultados_finais

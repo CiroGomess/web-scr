@@ -172,7 +172,7 @@ def preparar_dados_finais(lista_itens):
     }
 
 # ===================== EXECUTOR SEQUENCIAL ===================== #
-async def processar_lista_produtos_sequencial(page, lista_produtos):
+async def processar_lista_produtos_sequencial2(page, lista_produtos):
     itens_extraidos = []
     
     # Início: garante que está na página de busca

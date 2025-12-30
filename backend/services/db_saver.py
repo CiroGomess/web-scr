@@ -20,10 +20,10 @@ def salvar_lote_postgres(dados_lote):
         """
         cursor.execute(sql_lote, (
             dados_lote["fornecedror"], 
-            dados_lote["data_obj"],  # Passaremos o objeto datetime real
+            dados_lote["data_obj"], 
             dados_lote["total_itens"]
         ))
-        lote_id = cursor.fetchone()[0] # Pega o ID retornado pelo PostgreSQL
+        lote_id = cursor.fetchone()[0]
 
         # SQL para os ITENS
         sql_item = """
@@ -56,12 +56,17 @@ def salvar_lote_postgres(dados_lote):
                 item["valor_total"],
                 item["podeComprar"],
                 item["status"],
-                item.get("mensagem") # Usa .get caso não exista a chave
+                item.get("mensagem")
             ))
-            item_id = cursor.fetchone()[0] # Pega o ID do item criado
+            item_id = cursor.fetchone()[0]
 
-            # 3. Loop para salvar as regiões (se houver)
-            for regiao in item.get("regioes", []):
+            # =======================================================
+            # 🔴 CORREÇÃO AQUI: (item.get("regioes") or [])
+            # Isso garante que se for None, vira uma lista vazia []
+            # =======================================================
+            regioes = item.get("regioes") or [] 
+
+            for regiao in regioes:
                 cursor.execute(sql_regiao, (
                     item_id,
                     regiao["uf"],
@@ -70,7 +75,6 @@ def salvar_lote_postgres(dados_lote):
                     regiao["podeComprar"]
                 ))
 
-        # Efetiva a transação no banco
         conn.commit()
         print(f"✅ Sucesso! Lote ID {lote_id} salvo com {len(dados_lote['itens'])} itens.")
         return True
@@ -78,7 +82,7 @@ def salvar_lote_postgres(dados_lote):
     except Exception as e:
         print(f"❌ Erro ao salvar no PostgreSQL: {e}")
         if conn:
-            conn.rollback() # Desfaz tudo se der erro
+            conn.rollback()
         return False
     finally:
         if conn:

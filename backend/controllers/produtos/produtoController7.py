@@ -119,7 +119,7 @@ def preparar_dados_finais(lista_itens):
     }
 
 # ===================== EXECUTOR SEQUENCIAL ===================== #
-async def processar_lista_produtos_sequencial(page, lista_produtos):
+async def processar_lista_produtos_sequencial1(page, lista_produtos):
     itens_extraidos = []
     selector_input = "#search-cod-fab-input"
 

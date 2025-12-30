@@ -1,413 +1,345 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import services from "../../services/service";
-import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
-import CheckCircleOutlineOutlinedIcon from "@mui/icons-material/CheckCircleOutlineOutlined";
-import CancelOutlinedIcon from "@mui/icons-material/CancelOutlined";
-import ReportProblemOutlinedIcon from "@mui/icons-material/ReportProblemOutlined";
-
+import { useEffect, useState, useMemo } from "react";
+import services from "../../services/service"; 
+import { 
+  Inventory2Outlined, 
+  Search, 
+  FilterList, 
+  ExpandMore, 
+  ExpandLess,
+  StorefrontOutlined,
+  EmojiEventsOutlined,
+  AccessTimeOutlined,
+  FilterAltOutlined
+} from "@mui/icons-material";
 
 /* =======================
    TIPOS
 ======================= */
-type Regiao = {
-  uf: string;
-  disponivel: boolean;
+type Oferta = {
+  fornecedor: string;
+  preco: number;
   preco_formatado: string;
-  preco_num: number;
-  qtdDisponivel: number;
-  valor_total: number;
-  valor_total_formatado: string;
-  mensagem?: string | null;
+  estoque: number;
+  data_atualizacao: string;
 };
 
-type Produto = {
+type ProdutoComparado = {
   codigo: string;
-  nome?: string;
-  marca?: string;
-  imagem?: string;
-  disponivel?: boolean;
-  status?: string;
-  preco_formatado?: string;
-  preco_num?: number;
-  qtdDisponivel?: number;
-  valor_total_formatado?: string;
-  regioes?: Regiao[] | null;
-  erro?: string;
+  nome: string;
+  imagem: string;
+  fornecedor_vencedor: string;
+  melhor_preco: number;
+  melhor_preco_formatado: string;
+  ofertas: Oferta[];
 };
 
-/* =======================
-   COMPONENTE
-======================= */
-export default function ConsultaPage() {
-  const [produtos, setProdutos] = useState<Produto[]>([]);
+export default function ComparativoPrecosPage() {
+  const [produtos, setProdutos] = useState<ProdutoComparado[]>([]);
   const [loading, setLoading] = useState(true);
-
+  
+  // Estados dos Filtros
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [selectedSupplier, setSelectedSupplier] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [expandAll, setExpandAll] = useState(false);
-
 
   async function carregar() {
     setLoading(true);
+    try {
+      const result = await services("/comparar", { method: "GET" });
+      console.log("📦 Retorno da API:", result);
 
-    const result = await services("/produtos/consultar", { method: "GET" });
+      let lista: ProdutoComparado[] = [];
 
-    if (result?.success) {
-      const itens = result.data.dados_lote.itens || [];
+      if (result?.comparativo) {
+         lista = result.comparativo;
+      } else if (result?.data?.comparativo) {
+         lista = result.data.comparativo;
+      }
 
-      const itensNormalizados = itens.map((produto: Produto) => {
-        if (!produto.regioes || !Array.isArray(produto.regioes)) {
-          return produto;
-        }
-
-        // 🔹 FILTRA APENAS RJ e ES
-        const regioesFiltradas = produto.regioes.filter(
-          (r) => r.uf === "RJ" || r.uf === "ES"
-        );
-
-        return {
-          ...produto,
-          regioes: regioesFiltradas.length > 0 ? regioesFiltradas : null,
-        };
-      });
-
-      setProdutos(itensNormalizados);
-    } else {
-      alert("Erro ao carregar produtos");
+      if (lista.length > 0) {
+        setProdutos(lista);
+      }
+    } catch (error) {
+      console.error("Erro crítico ao carregar:", error);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }
-
-
-
 
   useEffect(() => {
     carregar();
   }, []);
 
-
+  /* =======================
+     EXTRAÇÃO DE FORNECEDORES
+  ======================= */
+  const listaFornecedores = useMemo(() => {
+    const fornecedoresSet = new Set<string>();
+    produtos.forEach(p => {
+      p.ofertas?.forEach(o => {
+        if (o.fornecedor) fornecedoresSet.add(o.fornecedor);
+      });
+    });
+    return Array.from(fornecedoresSet).sort();
+  }, [produtos]);
 
   /* =======================
      FILTROS
   ======================= */
   const produtosFiltrados = produtos.filter((p) => {
-    const texto =
-      `${p.codigo} ${p.nome ?? ""} ${p.marca ?? ""}`.toLowerCase();
+    const termo = search.toLowerCase();
+    
+    // 1. Filtro de Texto
+    const matchTexto = 
+      (p.codigo?.toLowerCase() || "").includes(termo) ||
+      (p.nome?.toLowerCase() || "").includes(termo) ||
+      (p.fornecedor_vencedor?.toLowerCase() || "").includes(termo);
 
-    const matchBusca = texto.includes(search.toLowerCase());
+    // 2. Filtro de Fornecedor
+    const matchFornecedor = 
+      selectedSupplier === "" || 
+      p.ofertas.some(o => o.fornecedor === selectedSupplier);
 
-    const matchStatus =
-      !statusFilter ||
-      (statusFilter === "disponivel" && p.disponivel && !p.erro) ||
-      (statusFilter === "indisponivel" && !p.disponivel && !p.erro) ||
-      (statusFilter === "erro" && !!p.erro);
-
-    return matchBusca && matchStatus;
+    return matchTexto && matchFornecedor;
   });
 
-  /* =======================
-     KPIs
-  ======================= */
-  const total = produtos.length;
-  const disponiveis = produtos.filter(p => p.disponivel && !p.erro).length;
-  const indisponiveis = produtos.filter(p => !p.disponivel && !p.erro).length;
-  const erros = produtos.filter(p => p.erro).length;
-
-  function menorValor(regioes: Regiao[]) {
-    const validos = regioes.filter(r => r.valor_total > 0);
-    if (!validos.length) return null;
-    return Math.min(...validos.map(r => r.valor_total));
-  }
+  // KPIs Calculados (Sem a média)
+  const totalProdutos = produtos.length;
+  const totalOfertas = produtos.reduce((acc, p) => acc + (p.ofertas?.length || 0), 0);
 
   if (loading) {
-    return <div className="p-8 text-gray-500">Carregando produtos...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center animate-pulse">
+          <div className="h-12 w-12 bg-indigo-200 rounded-full mb-4"></div>
+          <p className="text-gray-500 font-medium">Carregando comparativo...</p>
+        </div>
+      </div>
+    );
   }
 
-  /* =======================
-     RENDER
-  ======================= */
   return (
-    <div className="p-8 bg-gray-50 min-h-screen">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gray-50 p-6 md:p-10 font-sans text-gray-800">
+      <div className="max-w-7xl mx-auto space-y-8">
+        
+        {/* HEADER */}
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Comparativo de Preços</h1>
+            <p className="text-gray-500 mt-1">Análise em tempo real entre fornecedores.</p>
+          </div>
+          <button 
+            onClick={carregar}
+            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow-sm transition-all active:scale-95 flex items-center gap-2"
+          >
+             🔄 Atualizar Dados
+          </button>
+        </header>
 
-        {/* ===== TÍTULO ===== */}
-        <div className="mb-6">
-          <h2 className="text-2xl font-semibold text-gray-800">
-            Consulta de Produtos Recentes
-          </h2>
-          <p className="text-sm text-gray-500 mt-1">
-            Visualização detalhada do último lote processado
-          </p>
-        </div>
-
-
-        {/* ===== KPIs ===== */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <ResumoCard
-            titulo="Total de Itens"
-            valor={total}
-            cor="indigo"
-            icon={<Inventory2OutlinedIcon fontSize="medium" />}
+        {/* KPIs DASHBOARD (Ajustado para 2 colunas) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <KpiCard 
+            titulo="Produtos Analisados" 
+            valor={totalProdutos} 
+            icon={<Inventory2Outlined className="text-indigo-600" />} 
+            bg="bg-indigo-50"
           />
-          <ResumoCard
-            titulo="Disponíveis"
-            valor={disponiveis}
-            cor="emerald"
-            icon={<CheckCircleOutlineOutlinedIcon fontSize="medium" />}
-          />
-          <ResumoCard
-            titulo="Indisponíveis"
-            valor={indisponiveis}
-            cor="red"
-            icon={<CancelOutlinedIcon fontSize="medium" />}
-          />
-          <ResumoCard
-            titulo="Não Encontrados"
-            valor={erros}
-            cor="amber"
-            icon={<ReportProblemOutlinedIcon fontSize="medium" />}
+          <KpiCard 
+            titulo="Total de Ofertas Encontradas" 
+            valor={totalOfertas} 
+            icon={<StorefrontOutlined className="text-emerald-600" />} 
+            bg="bg-emerald-50"
           />
         </div>
 
-
-        {/* ===== BUSCA / FILTROS ===== */}
-        <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
-            <input
-              type="text"
-              placeholder="Buscar por Código, Nome ou Marca..."
+        {/* ===== BARRA DE FERRAMENTAS ===== */}
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 items-center">
+          
+          {/* Busca */}
+          <div className="relative flex-1 w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xl" />
+            <input 
+              type="text" 
+              placeholder="Pesquisar por código, nome..." 
+              className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition text-sm"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="md:col-span-2 w-full px-4 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
             />
+          </div>
 
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg text-sm"
-            >
-              <option value="">Todos os Status</option>
-              <option value="disponivel">Disponível</option>
-              <option value="indisponivel">Indisponível</option>
-              <option value="erro">Erro</option>
-            </select>
-
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-500">
-                {produtosFiltrados.length} itens
-              </span>
-
-              <button
-                onClick={() => {
-                  setExpandAll(!expandAll);
-                  setExpanded(expandAll ? null : "__ALL__");
-                }}
-                className="text-sm text-indigo-600 hover:text-indigo-800"
-              >
-                {expandAll ? "Recolher todos" : "Expandir todos"}
-              </button>
+          {/* Filtro Fornecedor */}
+          <div className="relative w-full md:w-64">
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                <FilterAltOutlined className="text-gray-400 text-xl" />
             </div>
+            <select
+              value={selectedSupplier}
+              onChange={(e) => setSelectedSupplier(e.target.value)}
+              className="w-full pl-10 pr-8 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none appearance-none text-sm text-gray-700 cursor-pointer"
+            >
+              <option value="">Todos os Fornecedores</option>
+              {listaFornecedores.map((f) => (
+                <option key={f} value={f}>{f}</option>
+              ))}
+            </select>
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                <ExpandMore className="text-gray-400" fontSize="small"/>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 text-sm text-gray-500 whitespace-nowrap px-2 border-l border-gray-100 pl-4">
+            <FilterList className="text-gray-400" />
+            <span>{produtosFiltrados.length} itens</span>
           </div>
         </div>
 
-        {/* ===== TABELA ===== */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="px-4 py-3 text-left">Código</th>
-                <th className="px-4 py-3 text-center">Imagem</th>
-                <th className="px-4 py-3 text-left">Produto</th>
-                <th className="px-4 py-3 text-right">Preço</th>
-                <th className="px-4 py-3 text-center">Qtd</th>
-                <th className="px-4 py-3 text-right">Total</th>
-                <th className="px-4 py-3 text-center">Status</th>
-                <th className="px-4 py-3 text-center">Ações</th>
-              </tr>
-            </thead>
+        {/* LISTA DE PRODUTOS */}
+        <div className="space-y-4">
+          {produtosFiltrados.map((produto) => {
+            const isExpanded = expanded === produto.codigo;
+            
+            return (
+              <div 
+                key={produto.codigo} 
+                className={`bg-white rounded-xl border transition-all duration-300 overflow-hidden
+                  ${isExpanded ? 'border-indigo-200 shadow-md ring-1 ring-indigo-50' : 'border-gray-200 shadow-sm hover:border-gray-300'}
+                `}
+              >
+                {/* CABEÇALHO DO CARD */}
+                <div 
+                  className="p-5 flex flex-col md:flex-row items-center gap-6 cursor-pointer"
+                  onClick={() => setExpanded(isExpanded ? null : produto.codigo)}
+                >
+                  <div className="flex-shrink-0 w-16 h-16 md:w-20 md:h-20 bg-gray-100 rounded-lg border border-gray-100 p-2 flex items-center justify-center">
+                    <img 
+                      src={produto.imagem || "https://via.placeholder.com/150"} 
+                      alt={produto.nome}
+                      className="w-full h-full object-contain mix-blend-multiply"
+                      onError={(e) => (e.currentTarget.src = "https://via.placeholder.com/150")}
+                    />
+                  </div>
 
-            <tbody>
-              {produtosFiltrados.map((p) => {
-                const aberto =
-                  expanded === "__ALL__" || expanded === p.codigo;
+                  <div className="flex-1 text-center md:text-left overflow-hidden w-full">
+                    <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
+                      {produto.codigo}
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-900 leading-tight truncate">
+                      {produto.nome}
+                    </h3>
+                    <div className="mt-1 text-sm text-gray-500">
+                      {(produto.ofertas || []).length} ofertas encontradas
+                    </div>
+                  </div>
 
-                return (
-                  <>
-                    <tr
-                      key={p.codigo}
-                      className="border-t hover:bg-gray-50 transition"
-                    >
-                      <td className="px-4 py-4 font-medium">{p.codigo}</td>
+                  <div className="text-center md:text-right min-w-[140px]">
+                    <div className="text-xs text-gray-500 mb-1">Melhor oferta</div>
+                    <div className="text-xl md:text-2xl font-bold text-emerald-600">
+                      {produto.melhor_preco_formatado}
+                    </div>
+                    <div className="text-xs font-medium text-indigo-600 mt-1 truncate max-w-[150px] mx-auto md:ml-auto">
+                      {produto.fornecedor_vencedor}
+                    </div>
+                  </div>
 
-                      <td className="px-4 py-4 text-center">
-                        <img
-                          src={
-                            p.imagem ||
-                            "https://isthmusblobs.blob.core.windows.net/imagens/foto-padrao.png"
-                          }
-                          className="w-12 h-12 object-contain mx-auto rounded-lg bg-gray-100 border"
-                        />
-                      </td>
+                  <div className="hidden md:block text-gray-400">
+                    {isExpanded ? <ExpandLess /> : <ExpandMore />}
+                  </div>
+                </div>
 
-                      <td className="px-4 py-4">
-                        <div className="font-medium">{p.nome || "-"}</div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          {p.marca || "-"}
-                        </div>
-                      </td>
+                {/* DETALHES */}
+                <div 
+                  className={`border-t border-gray-100 bg-gray-50 transition-all duration-300 ease-in-out
+                    ${isExpanded ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0 hidden'}
+                  `}
+                >
+                  <div className="p-5 md:p-8">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                      <StorefrontOutlined fontSize="small" /> Lista de Fornecedores
+                    </h4>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                      {(produto.ofertas || []).map((oferta, idx) => {
+                        const isWinner = oferta.fornecedor === produto.fornecedor_vencedor;
+                        const isSelectedSupplier = selectedSupplier === oferta.fornecedor;
 
-                      <td className="px-4 py-4 text-right">
-                        {p.preco_formatado || "R$ 0,00"}
-                      </td>
-
-                      <td className="px-4 py-4 text-center">
-                        {p.qtdDisponivel || 0}
-                      </td>
-
-                      <td className="px-4 py-4 text-right font-semibold text-indigo-600">
-                        {p.valor_total_formatado || "R$ 0,00"}
-                      </td>
-
-                      <td className="px-4 py-4 text-center">
-                        {p.erro ? (
-                          <span className="badge-red">Erro</span>
-                        ) : p.disponivel ? (
-                          <span className="badge-green">Disponível</span>
-                        ) : (
-                          <span className="badge-gray">Indisponível</span>
-                        )}
-                      </td>
-
-                      <td className="px-4 py-4 text-center">
-                        {p.regioes?.length ? (
-                          <button
-                            onClick={() =>
-                              setExpanded(aberto ? null : p.codigo)
-                            }
-                            className=" inline-flex items-center gap-2
-                                  px-3 py-1.5
-                                  text-sm font-semibold
-                                  rounded-md
-                                  bg-indigo-600 text-white
-                                  hover:bg-indigo-700
-                                  transition"
+                        return (
+                          <div 
+                            key={idx} 
+                            className={`relative p-4 rounded-xl border bg-white flex flex-col justify-between transition-colors
+                              ${isWinner 
+                                ? 'border-emerald-500 ring-1 ring-emerald-500 shadow-emerald-100 shadow-lg' 
+                                : isSelectedSupplier 
+                                  ? 'border-indigo-400 ring-1 ring-indigo-200'
+                                  : 'border-gray-200 hover:border-gray-300'
+                              }
+                            `}
                           >
-                            {aberto ? "Ocultar" : "Ver detalhes"}
-                          </button>
-                        ) : (
-                          <span className="text-xs text-gray-400">—</span>
-                        )}
-                      </td>
-                    </tr>
+                            {isWinner && (
+                              <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-emerald-500 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wide flex items-center gap-1 shadow-sm">
+                                <EmojiEventsOutlined style={{ fontSize: 14 }} /> Melhor Preço
+                              </div>
+                            )}
 
-                    {aberto && p.regioes && (
-                      <tr className="bg-gray-50">
-                        <td colSpan={8} className="px-6 py-6">
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            {p.regioes.map((r) => {
-                              const menor = menorValor(p.regioes);
+                            <div>
+                              <div className={`font-semibold text-sm mb-1 truncate ${isWinner ? 'text-emerald-700' : 'text-gray-800'}`} title={oferta.fornecedor}>
+                                {oferta.fornecedor}
+                              </div>
+                              <div className="text-xs text-gray-400 flex items-center gap-1 mb-3">
+                                <AccessTimeOutlined style={{ fontSize: 12 }} /> {oferta.data_atualizacao}
+                              </div>
+                            </div>
 
-                              return (
-                                <div
-                                  key={r.uf}
-                                  className={`rounded-xl border p-4 ${menor === r.valor_total
-                                    ? "border-emerald-400 bg-emerald-50"
-                                    : "border-gray-200 bg-white"
-                                    }`}
-                                >
-                                  <div className="flex justify-between mb-2">
-                                    <strong>{r.uf}</strong>
-                                    {menor === r.valor_total && (
-                                      <span className="badge-green">
-                                        Melhor preço
-                                      </span>
-                                    )}
-                                  </div>
-
-                                  <div className="text-sm space-y-1">
-                                    <div>Preço: {r.preco_formatado}</div>
-                                    <div>Qtd: {r.qtdDisponivel}</div>
-                                    <div className="font-semibold">
-                                      Total: {r.valor_total_formatado}
-                                    </div>
-                                  </div>
-
-                                  {r.mensagem && (
-                                    <div className="text-xs text-gray-500 mt-2 whitespace-pre-line">
-                                      {r.mensagem}
-                                    </div>
-                                  )}
+                            <div className="mt-2 pt-3 border-t border-gray-100 flex items-end justify-between">
+                                <div>
+                                    <span className="block text-[10px] text-gray-500 uppercase">Estoque</span>
+                                    <span className={`text-sm font-medium ${oferta.estoque > 0 ? 'text-gray-700' : 'text-red-400'}`}>
+                                        {oferta.estoque} un
+                                    </span>
                                 </div>
-                              );
-                            })}
+                                <div className="text-right">
+                                    <span className={`text-lg font-bold ${isWinner ? 'text-emerald-600' : 'text-gray-700'}`}>
+                                        {oferta.preco_formatado}
+                                    </span>
+                                </div>
+                            </div>
                           </div>
-                        </td>
-                      </tr>
-                    )}
-                  </>
-                );
-              })}
-            </tbody>
-          </table>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {produtosFiltrados.length === 0 && !loading && (
+            <div className="text-center py-20 bg-white rounded-xl border border-dashed border-gray-300">
+              <p className="text-gray-400">
+                Nenhum produto encontrado com os filtros atuais.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-/* =======================
-   COMPONENTE KPI
-======================= */
-function ResumoCard({
-  titulo,
-  valor,
-  cor,
-  icon,
-}: {
-  titulo: string;
-  valor: number;
-  cor: "indigo" | "emerald" | "red" | "amber";
-  icon: React.ReactNode;
-}) {
-  const cores: Record<string, string> = {
-    indigo: "bg-indigo-50 text-indigo-700",
-    emerald: "bg-emerald-50 text-emerald-700",
-    red: "bg-red-50 text-red-700",
-    amber: "bg-amber-50 text-amber-700",
-  };
-
-  const iconeBg: Record<string, string> = {
-    indigo: "bg-indigo-100",
-    emerald: "bg-emerald-100",
-    red: "bg-red-100",
-    amber: "bg-amber-100",
-  };
-
+// KPI CARD
+function KpiCard({ titulo, valor, icon, bg }: any) {
   return (
-    <div
-      className={`rounded-xl p-4 flex items-center gap-4 shadow-sm border border-gray-100 ${cores[cor]}`}
-    >
-      {/* ÍCONE */}
-      <div
-        className={`p-3 rounded-lg flex items-center justify-center ${iconeBg[cor]}`}
-      >
+    <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex items-center gap-4 hover:shadow-md transition-shadow">
+      <div className={`p-3 rounded-lg ${bg}`}>
         {icon}
       </div>
-
-      {/* TEXTO */}
-      <div className="flex flex-col">
-        <span className="text-sm font-medium text-gray-600">
-          {titulo}
-        </span>
-        <span className="text-2xl font-semibold text-gray-900">
-          {valor}
-        </span>
+      <div>
+        <p className="text-sm text-gray-500 font-medium">{titulo}</p>
+        <p className="text-2xl font-bold text-gray-800 tracking-tight">
+            {valor}
+        </p>
       </div>
     </div>
   );
 }
-
