@@ -1,11 +1,12 @@
 from flask import Flask, request, jsonify
 import os
 import asyncio
-from datetime import datetime, timedelta  # <--- Importante: timedelta para expiração
+from datetime import datetime, timedelta
 from flask_cors import CORS
 
 # ===================== IMPORTAÇÕES DO FLASK JWT ===================== #
-from flask_jwt_extended import JWTManager
+# Importamos o Manager e o decorador para proteger rotas
+from flask_jwt_extended import JWTManager, jwt_required
 from controllers.routes.userController import user_bp 
 # ====================================================================
 
@@ -20,10 +21,10 @@ from controllers.routes.comparandoProd import comparar_precos_entre_fornecedores
 app = Flask(__name__, template_folder="views")
 
 # ===================== CONFIGURAÇÃO DO JWT ========================== #
-# 1. Chave Secreta (Em produção, use uma variável de ambiente)
+# 1. Chave Secreta
 app.config["JWT_SECRET_KEY"] = "R4Z5ce3aeFWo9NTXIEiRHbx32aOuSPPz" 
 
-# Define a expiração para 240 dias (aprox. 8 meses)
+# 2. Tempo de Expiração (240 dias = ~8 meses)
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=240)
 
 jwt = JWTManager(app)
@@ -33,6 +34,7 @@ CORS(app)
 
 # ===================== REGISTRO DE BLUEPRINTS ======================= #
 # Registra as rotas de usuário (/auth/login, /auth/register, etc)
+# Isso permite que o frontend faça login e receba o token.
 app.register_blueprint(user_bp)
 # ====================================================================
 
@@ -47,9 +49,10 @@ def allowed_file(filename):
 
 
 # ====================================================================
-# 📂 ROTA DE UPLOAD
+# 📂 ROTA DE UPLOAD (🔒 PROTEGIDA)
 # ====================================================================
 @app.route("/upload", methods=["POST"])
+@jwt_required() # <--- Usuário precisa do Token para enviar arquivo
 def upload_file():
     try:
         if "file" not in request.files:
@@ -89,9 +92,10 @@ def upload_file():
 
 
 # ====================================================================
-# 🤖 ROTA DE PROCESSAMENTO (ROBÔ)
+# 🤖 ROTA DE PROCESSAMENTO (🔒 PROTEGIDA)
 # ====================================================================
 @app.route("/processar", methods=["POST"])
+@jwt_required() # <--- Usuário precisa do Token para rodar o robô
 def processar():
     try:
         # Executa o Playwright (main) para obter os resultados e salvar no banco
@@ -101,13 +105,12 @@ def processar():
             loop = asyncio.get_event_loop()
             result = loop.run_until_complete(main())
         
-        # O salvamento JSON foi removido conforme solicitado.
-        # O salvamento no Banco ocorre dentro do main() -> processar_lista_produtos_parallel -> db_saver
-
+        # O salvamento no Banco ocorre dentro do main() -> db_saver
+        
         return jsonify({
             "message": "Processamento concluído!",
             "total_processado": result.get("total_processado", 0),
-            "resultado": result # Retorna o resumo do que aconteceu
+            "resultado": result 
         })
 
     except Exception as e:
@@ -116,13 +119,13 @@ def processar():
 
 
 # ====================================================================
-# 📊 ROTA DE CONSULTA (JSON RECENTE - Opcional se usar só banco)
+# 📊 ROTA DE CONSULTA (🔒 PROTEGIDA)
 # ====================================================================
 @app.route("/produtos/consultar", methods=["GET"])
+@jwt_required() # <--- Usuário precisa do Token para ver dados
 def consultar_produtos_recentes():
     """
     Consulta e retorna todos os dados do arquivo JSON de lote mais recente.
-    (Mantenha se você ainda gera JSONs de backup, caso contrário pode remover depois)
     """
     try:
         resultado = carregar_lote_mais_recente()
@@ -146,13 +149,13 @@ def consultar_produtos_recentes():
 
 
 # ====================================================================
-# ⚖️ ROTA DE COMPARAÇÃO (BANCO DE DADOS)
+# ⚖️ ROTA DE COMPARAÇÃO (🔒 PROTEGIDA)
 # ====================================================================
 @app.route("/comparar", methods=["GET"])
+@jwt_required() # <--- Usuário precisa do Token para comparar preços
 def rota_comparar_produtos():
     """
-    Rota que acessa o banco de dados, pega todos os produtos salvos
-    e retorna quem é o fornecedor mais barato para cada código.
+    Rota que acessa o banco de dados e compara preços.
     """
     try:
         resultado = comparar_precos_entre_fornecedores()
