@@ -8,6 +8,9 @@ from flask_cors import CORS
 from utils.salvar_dados_processados import salvar_lista_processada 
 from controllers.dadosController import carregar_lote_mais_recente
 
+# IMPORTAÇÃO DA NOVA ROTA DE COMPARAÇÃO
+from controllers.routes.comparandoProd import comparar_precos_entre_fornecedores
+
 
 app = Flask(__name__, template_folder="views")
 CORS(app)
@@ -130,6 +133,24 @@ def consultar_produtos_recentes():
         print(f"ERRO CRÍTICO NA ROTA: {str(e)}")
         return jsonify(error=f"Erro interno do servidor: {str(e)}"), 500
 
+
+
+@app.route("/comparar", methods=["GET"])
+def rota_comparar_produtos():
+    """
+    Rota que acessa o banco de dados, pega todos os produtos salvos
+    e retorna quem é o fornecedor mais barato para cada código.
+    """
+    try:
+        resultado = comparar_precos_entre_fornecedores()
+        
+        if not resultado["success"]:
+            return jsonify({"error": resultado["error"]}), 500
+            
+        return jsonify(resultado), 200
+
+    except Exception as e:
+        return jsonify(error=f"Erro na rota de comparação: {str(e)}"), 500
 
 if __name__ == "__main__":
     app.run(debug=True)

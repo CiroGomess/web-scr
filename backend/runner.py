@@ -1,7 +1,7 @@
 import asyncio
 from playwright.async_api import async_playwright
 from controllers.fornecedores.Fornecedor1Controller import login
-from backend.controllers.produtos.produtoController1 import processar_lista_produtos_parallel
+from controllers.produtos.produtoController1 import processar_lista_produtos_parallel
 from utils.xlsx_loader import get_latest_xlsx, load_produtos_from_xlsx
 
 
