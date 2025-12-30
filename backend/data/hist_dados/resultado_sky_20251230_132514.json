@@ -1,0 +1,39 @@
+{
+    "data_processamento_lote": "30/12/2025 13:25:14",
+    "total_itens": 1,
+    "itens": [
+        {
+            "codigo": "S440",
+            "nome": "PALHETA DIANTEIRA 16\"",
+            "marca": "DYNA",
+            "imagem": "https://cliente.skypecas.com.br/imagens/produtos/thumbs/168919K.jpg",
+            "preco": "34,84",
+            "preco_num": 34.84,
+            "preco_formatado": "R$ 34,84",
+            "valor_total": 69.68,
+            "valor_total_formatado": "R$ 69,68",
+            "uf": "RJ",
+            "qtdSolicitada": 2,
+            "qtdDisponivel": 76,
+            "podeComprar": true,
+            "mensagem": null,
+            "disponivel": true,
+            "status": "Disponível",
+            "regioes": [
+                {
+                    "uf": "RJ",
+                    "preco": "34,84",
+                    "preco_num": 34.84,
+                    "preco_formatado": "R$ 34,84",
+                    "qtdSolicitada": 2,
+                    "qtdDisponivel": 76,
+                    "valor_total": 69.68,
+                    "valor_total_formatado": "R$ 69,68",
+                    "podeComprar": true,
+                    "mensagem": null,
+                    "disponivel": true
+                }
+            ]
+        }
+    ]
+}

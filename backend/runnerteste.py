@@ -1,42 +1,41 @@
 import asyncio
 from playwright.async_api import async_playwright
 
-# 1. Importa o Login do fornecedor 7 (RMP)
-from controllers.fornecedores.Fornecedor7Controller import login_rmp
+# 1. Importa o Login do fornecedor 13 (Sky Peças)
+# Certifique-se que o arquivo de login se chama Fornecedor13Controller.py e está na pasta certa
+from controllers.fornecedores.Fornecedor1Controller import login
 
-# 2. Importa o Processador de produtos do controller 4
-# Nota: Ajustei o nome da função para o padrão que definimos no código anterior
-from controllers.produtos.produtoController4 import processar_lista_produtos_sequencial
+# 2. Importa o Processador de produtos do controller 13
+from controllers.produtos.produtoController1 import processar_lista_produtos_parallel
 
 async def main():
     async with async_playwright() as p:
-        # 1. Lista de produtos (incluindo o código 93306364 que você enviou no HTML)
+        
+        # --- LISTA DE TESTE ---
+        # Coloque aqui códigos que você sabe que existem na Sky Peças
         lista_produtos = [
             {"codigo": "13479", "quantidade": 3},
-            {"codigo": "03634", "quantidade": 5},
-            {"codigo": "10535", "quantidade": 6},
-            {"codigo": "12178", "quantidade": 3},
-            {"codigo": "08939", "quantidade": 2},
-            {"codigo": "93306364", "quantidade": 1}
+            {"codigo": "S440", "quantidade": 2},
+            {"codigo": "93306364", "quantidade": 1} # Exemplo do seu teste anterior
         ]
 
-        # 2. Realiza o login na RMP
-        # Retorna browser e context para podermos fechar tudo no final
-        browser, context, page = await login_rmp(p)
+        # 1. Realiza o login na Sky Peças
+        print("🤖 Iniciando Robô Sky Peças...")
+        browser, context, page = await login(p)
         
         if not page:
-            print("❌ Falha no login inicial na RMP. Verifique as credenciais.")
+            print("❌ Falha no login inicial. Encerrando.")
             return
 
-        print(f"🚀 Iniciando processamento de {len(lista_produtos)} produtos na RMP...")
+        # 2. Processamento
+        print(f"🚀 Iniciando processamento de {len(lista_produtos)} produtos...")
 
-        # 3. Chama a função de extração do Controller 4
-        # Ela vai pesquisar um por um, validar se existe, extrair e salvar o JSON
-        await processar_lista_produtos_sequencial(page, lista_produtos)
+        await processar_lista_produtos_parallel(page, lista_produtos)
 
-        # 4. Finalização de segurança
-        await browser.close()
-        print("\n✨ Processamento RMP concluído e navegador fechado.")
+        # 3. Finalização
+        # Descomente a linha abaixo se quiser fechar o navegador ao terminar
+        # await browser.close()
+        print("\n✨ Processamento Sky Peças concluído.")
 
 if __name__ == "__main__":
     asyncio.run(main())

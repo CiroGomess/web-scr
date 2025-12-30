@@ -107,6 +107,7 @@ def salvar_json_final(lista_itens):
     agora = datetime.now()
     dados_finais = {
         "data_processamento_lote": agora.strftime("%d/%m/%Y %H:%M:%S"),
+        "fornecedror": "RMP",
         "total_itens": len(lista_itens),
         "itens": lista_itens
     }

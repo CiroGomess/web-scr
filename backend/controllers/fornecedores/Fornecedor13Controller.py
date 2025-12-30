@@ -62,6 +62,25 @@ async def login_skypecas(p):
         await page.wait_for_load_state("networkidle")
         await asyncio.sleep(3)
 
+        # ================== TRATAMENTO DO MODAL DE AVISOS ================== #
+        try:
+            # O seletor para o botão de fechar baseado no seu HTML: class="close-modal"
+            selector_fechar_modal = "a.close-modal"
+            
+            # Verifica se o botão de fechar está visível (espera no máximo 5 segundos por ele)
+            if await page.locator(selector_fechar_modal).is_visible(timeout=5000):
+                print("🔔 Modal de avisos detectado! Tentando fechar...")
+                await page.click(selector_fechar_modal)
+                await asyncio.sleep(1) # Aguarda a animação de fechar
+                print("🔕 Modal fechado com sucesso.")
+            else:
+                print("ℹ️ Nenhum modal de avisos apareceu.")
+                
+        except Exception as e:
+            # Se der erro aqui, apenas ignora e segue a vida, pois o modal pode não existir
+            print(f"⚠️ Aviso: Não foi necessário fechar modal ou erro ao tentar: {e}")
+        # =================================================================== #
+
         # Verificação: Se a URL ainda contiver /login ou o campo CNPJ persistir, falhou.
         if "/login" in page.url or await page.locator("#txtCNPJCPF").count() > 0:
             print("❌ ERRO: Login Sky Peças falhou! Verifique as credenciais.")
