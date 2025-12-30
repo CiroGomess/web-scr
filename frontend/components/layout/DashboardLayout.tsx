@@ -1,31 +1,75 @@
-"use client"; // <--- 1. OBRIGATÓRIO: Transforma em Client Component
+"use client";
 
-import { usePathname } from "next/navigation"; // <--- 2. Importar o hook de rota
-import Sidebar from "./Sidebar"; // (Seus imports originais...)
-import Header from "./Header";   // (Seus imports originais...)
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react"; // Importar Hooks
+import Sidebar from "./Sidebar";
+import Header from "./Header";
+import { Box, CssBaseline, CircularProgress } from "@mui/material";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname(); // <--- 3. Pega a rota atual
+  const pathname = usePathname();
+  const router = useRouter();
+  const [authorized, setAuthorized] = useState(false);
 
-  // 4. LÓGICA: Se for "/login", retorna SÓ o conteúdo (sem sidebar)
-  if (pathname === "/login") {
-    return <main className="min-h-screen bg-gray-100">{children}</main>;
+  // 1. LÓGICA DE PROTEÇÃO DE ROTA
+  useEffect(() => {
+    // Se for login, não precisa verificar token
+    if (pathname === "/login") {
+        setAuthorized(true);
+        return;
+    }
+
+    // Tenta pegar o token do localStorage
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+        // Se não tem token, chuta para o login
+        router.push("/login");
+    } else {
+        // Se tem token, libera o acesso
+        setAuthorized(true);
+    }
+  }, [pathname, router]);
+
+  // Enquanto verifica a autorização, pode mostrar nada ou um loading
+  if (!authorized) {
+      return null; // ou <div className="h-screen flex items-center justify-center"><CircularProgress /></div>
   }
 
-  // 5. Se NÃO for login, retorna o layout completo (Dashboard)
+  // 2. LAYOUT DE LOGIN (Tela Cheia)
+  if (pathname === "/login") {
+    return (
+      <main className="min-h-screen bg-gray-950 flex flex-col">
+        <CssBaseline />
+        {children}
+      </main>
+    );
+  }
+
+  // 3. LAYOUT DO SISTEMA (Com Sidebar e Header)
   return (
-    <div className="flex h-screen bg-gray-100">
-      {/* Sua Sidebar */}
+    <Box sx={{ display: "flex", height: "100vh", overflow: "hidden", bgcolor: "#F8FAFC" }}>
+      <CssBaseline />
+      
       <Sidebar />
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Seu Header */}
+      <Box sx={{ flexGrow: 1, display: "flex", flexDirection: "column", height: "100%" }}>
         <Header />
-
-        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-6">
-          {children}
-        </main>
-      </div>
-    </div>
+        <Box
+          component="main"
+          sx={{
+            flexGrow: 1,
+            p: 3,
+            overflowY: "auto",
+            overflowX: "hidden",
+            backgroundColor: "#F8FAFC",
+          }}
+        >
+          <Box sx={{ maxWidth: "1600px", mx: "auto", width: "100%" }}>
+             {children}
+          </Box>
+        </Box>
+      </Box>
+    </Box>
   );
 }

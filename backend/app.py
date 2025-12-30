@@ -1,18 +1,40 @@
 from flask import Flask, request, jsonify
 import os
 import asyncio
-from runner import main  # importa sua função Playwright
-from datetime import datetime
+from datetime import datetime, timedelta  # <--- Importante: timedelta para expiração
 from flask_cors import CORS
 
-from controllers.dadosController import carregar_lote_mais_recente
+# ===================== IMPORTAÇÕES DO FLASK JWT ===================== #
+from flask_jwt_extended import JWTManager
+from controllers.routes.userController import user_bp 
+# ====================================================================
 
-# IMPORTAÇÃO DA NOVA ROTA DE COMPARAÇÃO
+# Importação do Runner (Playwright)
+from runner import main 
+
+# Controllers
+from controllers.dadosController import carregar_lote_mais_recente
 from controllers.routes.comparandoProd import comparar_precos_entre_fornecedores
 
 
 app = Flask(__name__, template_folder="views")
+
+# ===================== CONFIGURAÇÃO DO JWT ========================== #
+# 1. Chave Secreta (Em produção, use uma variável de ambiente)
+app.config["JWT_SECRET_KEY"] = "R4Z5ce3aeFWo9NTXIEiRHbx32aOuSPPz" 
+
+# Define a expiração para 240 dias (aprox. 8 meses)
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=240)
+
+jwt = JWTManager(app)
+# ====================================================================
+
 CORS(app)
+
+# ===================== REGISTRO DE BLUEPRINTS ======================= #
+# Registra as rotas de usuário (/auth/login, /auth/register, etc)
+app.register_blueprint(user_bp)
+# ====================================================================
 
 
 UPLOAD_FOLDER = "data/temp"
@@ -20,33 +42,26 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {"xlsx"}
 
-
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+# ====================================================================
+# 📂 ROTA DE UPLOAD
+# ====================================================================
 @app.route("/upload", methods=["POST"])
 def upload_file():
     try:
         if "file" not in request.files:
-            return jsonify({
-                "success": False,
-                "message": "Nenhum arquivo enviado"
-            }), 400
+            return jsonify({"success": False, "message": "Nenhum arquivo enviado"}), 400
 
         file = request.files["file"]
 
         if file.filename == "":
-            return jsonify({
-                "success": False,
-                "message": "Arquivo inválido"
-            }), 400
+            return jsonify({"success": False, "message": "Arquivo inválido"}), 400
 
         if not allowed_file(file.filename):
-            return jsonify({
-                "success": False,
-                "message": "Formato não permitido. Envie .xlsx"
-            }), 400
+            return jsonify({"success": False, "message": "Formato não permitido. Envie .xlsx"}), 400
 
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         original = file.filename.replace(" ", "_")
@@ -73,41 +88,45 @@ def upload_file():
         }), 500
 
 
-
+# ====================================================================
+# 🤖 ROTA DE PROCESSAMENTO (ROBÔ)
+# ====================================================================
 @app.route("/processar", methods=["POST"])
 def processar():
-
     try:
-        # 1. Executa o Playwright para obter os resultados
+        # Executa o Playwright (main) para obter os resultados e salvar no banco
         try:
             result = asyncio.run(main())
         except RuntimeError:
             loop = asyncio.get_event_loop()
             result = loop.run_until_complete(main())
-    
         
+        # O salvamento JSON foi removido conforme solicitado.
+        # O salvamento no Banco ocorre dentro do main() -> processar_lista_produtos_parallel -> db_saver
 
-        # 4. Retorna a resposta JSON completa
         return jsonify({
-            "message": "Processamento concluído e LOTE de dados salvo em um único arquivo!",
+            "message": "Processamento concluído!",
             "total_processado": result.get("total_processado", 0),
-            "resultado": result # Retorna o resultado completo original do runner
+            "resultado": result # Retorna o resumo do que aconteceu
         })
 
     except Exception as e:
         print("ERRO NO PROCESSAMENTO:", e)
         return jsonify(error=f"Erro ao processar: {str(e)}"), 500
+
+
+# ====================================================================
+# 📊 ROTA DE CONSULTA (JSON RECENTE - Opcional se usar só banco)
+# ====================================================================
 @app.route("/produtos/consultar", methods=["GET"])
 def consultar_produtos_recentes():
     """
     Consulta e retorna todos os dados do arquivo JSON de lote mais recente.
+    (Mantenha se você ainda gera JSONs de backup, caso contrário pode remover depois)
     """
-    
     try:
-        # Chama a função que encontra e lê o arquivo mais recente
         resultado = carregar_lote_mais_recente()
         
-        # 1. Verifica se houve erro
         if "error" in resultado:
             status_code = 404 if "encontrado" in resultado["error"] else 500
             
@@ -116,7 +135,6 @@ def consultar_produtos_recentes():
                 "error": resultado["error"]
             }), status_code
 
-        # 2. Retorna os dados com sucesso
         return jsonify({
             "message": f"Dados carregados com sucesso do lote: {resultado['lote_nome']}",
             "dados_lote": resultado["dados"]
@@ -127,7 +145,9 @@ def consultar_produtos_recentes():
         return jsonify(error=f"Erro interno do servidor: {str(e)}"), 500
 
 
-
+# ====================================================================
+# ⚖️ ROTA DE COMPARAÇÃO (BANCO DE DADOS)
+# ====================================================================
 @app.route("/comparar", methods=["GET"])
 def rota_comparar_produtos():
     """
@@ -144,6 +164,7 @@ def rota_comparar_produtos():
 
     except Exception as e:
         return jsonify(error=f"Erro na rota de comparação: {str(e)}"), 500
+
 
 if __name__ == "__main__":
     app.run(debug=True)
