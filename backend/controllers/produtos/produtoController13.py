@@ -174,20 +174,7 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
         return None
 
 # ===================== SALVAMENTO E EXECUTOR ===================== #
-def salvar_json_final(lista_itens):
-    agora = datetime.now()
-    dados_finais = {
-        "data_processamento_lote": agora.strftime("%d/%m/%Y %H:%M:%S"),
-        "fornecedror": "Sky Peças",
-        "total_itens": len(lista_itens),
-        "itens": lista_itens
-    }
-    pasta = "data/hist_dados"
-    if not os.path.exists(pasta): os.makedirs(pasta)
-    caminho = os.path.join(pasta, f"resultado_sky_{agora.strftime('%Y%m%d_%H%M%S')}.json")
-    with open(caminho, 'w', encoding='utf-8') as f:
-        json.dump(dados_finais, f, indent=4, ensure_ascii=False)
-    return caminho
+
 
 async def processar_lista_produtos_sequencial_sky(page, lista_produtos):
     itens_extraidos = []
@@ -238,8 +225,6 @@ async def processar_lista_produtos_sequencial_sky(page, lista_produtos):
             print(f"❌ Falha no loop Sky: {e}")
             await page.goto("https://cliente.skypecas.com.br/", wait_until="networkidle")
 
-    if itens_extraidos:
-        caminho = salvar_json_final(itens_extraidos)
-        print(f"\n💾 JSON salvo em: {caminho}")
+ 
     
     return itens_extraidos

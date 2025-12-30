@@ -1,8 +1,15 @@
 import asyncio
 import re
 import os
-import json
 from datetime import datetime
+
+# ===================== IMPORTAÇÃO DO SERVIÇO DE BANCO ===================== #
+try:
+    # Tenta importar a função de salvar no Postgres
+    from services.db_saver import salvar_lote_postgres
+except ImportError:
+    print("⚠️ Aviso: 'services.db_saver' não encontrado. O salvamento no banco será pulado.")
+    salvar_lote_postgres = None
 
 # ===================== AUXILIARES DE FORMATAÇÃO ===================== #
 def clean_price(preco_str):
@@ -19,11 +26,11 @@ def format_brl(valor):
 # ===================== BLOQUEIOS E TUTORIAIS ===================== #
 async def desativar_tutoriais_js(page):
     try:
-        dados_tutoriais = {
-            "tutorial/catalogo/index": ["ok-v1", "ok-v0", "ok-v0"],
-            "tutorial/home/index": ["ok-v1", "ok-v2", "ok-v1"]
-        }
-        await page.evaluate(f"localStorage.setItem('tutoriais', '{json.dumps(dados_tutoriais)}');")
+        # Importante: Como tiramos o 'import json' do topo (se não for usar), 
+        # aqui precisamos escrever a string JSON manualmente ou importar json só aqui.
+        # Vou manter a string manual para evitar import desnecessário.
+        dados_tutoriais = '{"tutorial/catalogo/index": ["ok-v1", "ok-v0", "ok-v0"], "tutorial/home/index": ["ok-v1", "ok-v2", "ok-v1"]}'
+        await page.evaluate(f"localStorage.setItem('tutoriais', '{dados_tutoriais}');")
     except: pass
 
 async def fechar_bloqueios_obrigatorio(page):
@@ -103,9 +110,7 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
         
         qtd_disponivel = 0
         if tem_estoque:
-            # Como estamos na tabela, o input costuma vir com valor 1 por padrão
-            # Assumimos 999 ou 1, pois a tabela não diz o número exato sem abrir o modal
-            # mas para o seu padrão JSON, colocaremos 1 se disponível.
+            # Assumimos 1 se disponível, pois a tabela não mostra quantidade exata sem clicar
             qtd_disponivel = 1 
         
     except Exception as e:
@@ -131,7 +136,7 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
         "disponivel": tem_estoque
     }
 
-    # Estrutura Principal do JSON
+    # Estrutura Principal do JSON/DB
     return {
         "codigo": codigo_fab,
         "nome": nome_text,
@@ -152,41 +157,64 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
         "regioes": [regiao_rj]
     }
 
-# ===================== SALVAMENTO E EXECUTOR SEQUENCIAL ===================== #
-def salvar_json_final(lista_itens):
+# ===================== PREPARAÇÃO DE DADOS PARA O BANCO ===================== #
+def preparar_dados_finais(lista_itens):
+    """
+    Monta o dicionário mestre com o nome do fornecedor fixo: 'compreonline Roles'
+    """
     agora = datetime.now()
-    dados_finais = {
-        "data_processamento_lote": agora.strftime("%d/%m/%Y %H:%M:%S"),
-        "fornecedror": "compreonline Roles",
+    return {
+        "data_processamento_lote": agora.strftime("%d/%m/%Y %H:%M:%S"), # Texto (não usado no JSON local mais, mas mantido pra log)
+        "data_obj": agora, # Objeto datetime para o Banco (Postgres)
+        "fornecedror": "compreonline Roles", # <--- NOME DO FORNECEDOR
         "total_itens": len(lista_itens),
         "itens": lista_itens
     }
-    pasta = "data/hist_dados"
-    if not os.path.exists(pasta): os.makedirs(pasta)
-    caminho = os.path.join(pasta, f"resultado_roles_{agora.strftime('%Y%m%d_%H%M%S')}.json")
-    with open(caminho, 'w', encoding='utf-8') as f:
-        json.dump(dados_finais, f, indent=4, ensure_ascii=False)
-    return caminho
 
+# ===================== EXECUTOR SEQUENCIAL ===================== #
 async def processar_lista_produtos_sequencial(page, lista_produtos):
     itens_extraidos = []
+    
     # Início: garante que está na página de busca
     if page.url == "about:blank" or "compreonline" not in page.url:
         await page.goto("https://compreonline.roles.com.br/", wait_until="networkidle")
     
     for idx, item in enumerate(lista_produtos):
-        print(f"\n📦 [{idx+1}/{len(lista_produtos)}] Processando Código: {item['codigo']}")
+        print(f"\n📦 [{idx+1}/{len(lista_produtos)}] Roles -> Buscando: {item['codigo']}")
         try:
             await buscar_produto(page, item["codigo"])
             resultado = await extrair_dados_produto(page, item["codigo"], item["quantidade"])
+            
             if resultado:
                 itens_extraidos.append(resultado)
+            
             await asyncio.sleep(2) 
+
         except Exception as e:
             print(f"❌ Erro crítico no loop: {e}")
             await page.reload(wait_until="networkidle")
 
+    # ==========================================================
+    # 👇👇 SALVAMENTO APENAS NO BANCO DE DADOS 👇👇
+    # ==========================================================
     if itens_extraidos:
-        salvar_json_final(itens_extraidos)
-        print(f"✅ Processamento finalizado com {len(itens_extraidos)} itens.")
+        # 1. Filtra itens vazios ou com erro se necessário
+        validos = [r for r in itens_extraidos if r and r.get("codigo")]
+        
+        if validos:
+            # 2. Prepara os dados
+            dados_completos = preparar_dados_finais(validos)
+
+            # 3. Salva no PostgreSQL (Sem salvar JSON local)
+            if salvar_lote_postgres:
+                print("⏳ Enviando dados para o PostgreSQL...")
+                sucesso = salvar_lote_postgres(dados_completos)
+                if sucesso:
+                    print("✅ Dados salvos no banco com sucesso!")
+                else:
+                    print("❌ Falha ao salvar no banco.")
+            else:
+                print("ℹ️ Salvamento de banco pulado (módulo não importado).")
+    
+    print(f"✅ Processamento finalizado com {len(itens_extraidos)} itens.")
     return itens_extraidos

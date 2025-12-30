@@ -1,6 +1,50 @@
 import asyncio
+import re
+import os
+import json
+from datetime import datetime
 
+# ===================== IMPORTAÇÃO DO SERVIÇO DE BANCO ===================== #
+try:
+    # Tenta importar a função de salvar no Postgres
+    from services.db_saver import salvar_lote_postgres
+except ImportError:
+    print("⚠️ Aviso: 'services.db_saver' não encontrado. O salvamento no banco será pulado.")
+    salvar_lote_postgres = None
 
+# ============================================================
+# 🔧 PREPARAÇÃO DE DADOS E SALVAMENTO (NOVA PARTE)
+# ============================================================
+def preparar_dados_finais(lista_itens):
+    """
+    Monta o dicionário mestre com o nome do fornecedor fixo: 'portalcomdip'
+    """
+    agora = datetime.now()
+    return {
+        "data_processamento_lote": agora.strftime("%d/%m/%Y %H:%M:%S"), # String para JSON
+        "data_obj": agora, # Objeto Datetime para PostgreSQL
+        "fornecedror": "portalcomdip", # <--- NOME DO FORNECEDOR
+        "total_itens": len(lista_itens),
+        "itens": lista_itens
+    }
+
+def salvar_json_local(dados_finais):
+    """Salva um backup local em JSON antes de enviar ao banco"""
+    pasta = "data/hist_dados"
+    if not os.path.exists(pasta): os.makedirs(pasta)
+    
+    # Remove objeto datetime para salvar no JSON sem erro
+    dados_para_json = dados_finais.copy()
+    if "data_obj" in dados_para_json:
+        del dados_para_json["data_obj"]
+
+    nome_arq = f"resultado_portalcomdip_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    caminho = os.path.join(pasta, nome_arq)
+    
+    with open(caminho, 'w', encoding='utf-8') as f:
+        json.dump(dados_para_json, f, indent=4, ensure_ascii=False)
+    
+    return caminho
 
 # ============================================================
 # 🔧 Converte "R$ 1.234,50" → 1234.50
@@ -428,7 +472,7 @@ async def processar_batch(context, batch):
 
 
 # ============================================================
-# 🔁 PROCESSAR BATCHES DE 5 EM 5
+# 🔁 PROCESSAR BATCHES DE 5 EM 5 (COM DB)
 # ============================================================
 async def processar_lista_produtos_parallel(context, lista_produtos, batch_size=5):
 
@@ -444,5 +488,31 @@ async def processar_lista_produtos_parallel(context, lista_produtos, batch_size=
 
         resultados = await processar_batch(context, batch)
         resultados_finais.extend(resultados)
+
+    # ==========================================================
+    # 👇👇 PARTE NOVA: SALVAR NO BANCO DE DADOS E JSON 👇👇
+    # ==========================================================
+    if resultados_finais:
+        # 1. Filtra itens com erro
+        validos = [r for r in resultados_finais if r and "erro" not in r and r.get("codigo")]
+        
+        if validos:
+            # 2. Prepara os dados (Nome do fornecedor: "portalcomdip")
+            dados_completos = preparar_dados_finais(validos)
+
+            # 3. Salva backup JSON
+            caminho_json = salvar_json_local(dados_completos)
+            print(f"\n📂 Backup JSON salvo: {caminho_json}")
+
+            # 4. Salva no PostgreSQL
+            if salvar_lote_postgres:
+                print("⏳ Enviando dados para o PostgreSQL...")
+                sucesso = salvar_lote_postgres(dados_completos)
+                if sucesso:
+                    print("✅ Dados salvos no banco com sucesso!")
+                else:
+                    print("❌ Falha ao salvar no banco.")
+            else:
+                print("ℹ️ Salvamento de banco pulado.")
 
     return resultados_finais

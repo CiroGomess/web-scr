@@ -1,8 +1,14 @@
 import asyncio
 import re
-import os
-import json
 from datetime import datetime
+
+# ===================== IMPORTAÇÃO DO SERVIÇO DE BANCO ===================== #
+try:
+    # Tenta importar a função de salvar no Postgres
+    from services.db_saver import salvar_lote_postgres
+except ImportError:
+    print("⚠️ Aviso: 'services.db_saver' não encontrado. O salvamento no banco será pulado.")
+    salvar_lote_postgres = None
 
 # ===================== AUXILIARES DE FORMATAÇÃO ===================== #
 def clean_price(preco_str):
@@ -19,13 +25,11 @@ def format_brl(valor):
 # ===================== EXTRAÇÃO DE DADOS ===================== #
 async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1):
     # 1. Verifica se a mensagem de "Nenhum resultado encontrado" apareceu
-    # Magento costuma carregar essa div quando não há match exato
     if await page.locator(".message.notice").count() > 0:
         print(f"❌ {codigo_solicitado} não encontrado (Aviso de correspondência próxima).")
         return None
 
     # 2. Localiza o card do produto principal
-    # Usamos seletor rigoroso para evitar os itens dentro dos modais de similares
     item = page.locator("ol.product-items > li.product-item").first
     
     if await item.count() == 0:
@@ -33,12 +37,10 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
 
     try:
         # --- AGUARDAR CARREGAMENTO ---
-        # Em vez de esperar o preço geral, esperamos o container de preço da ação de compra
-        # que é o que realmente importa e está visível.
         selector_preco_real = ".price-action-wrapper .price"
         await item.locator(selector_preco_real).first.wait_for(state="visible", timeout=15000)
         
-        # Extração do Nome (Link principal do produto)
+        # Extração do Nome
         nome_text = (await item.locator(".product-item-name .product-item-link").first.inner_text()).strip()
         
         # Código do Fabricante e Marca
@@ -52,7 +54,7 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
         # Imagem
         link_img = await item.locator("img.product-image-photo").first.get_attribute("src")
 
-        # Preço Unitário (Garantindo que pegamos o da área de checkout do card)
+        # Preço Unitário
         preco_raw = await item.locator(selector_preco_real).first.inner_text()
         preco_num = clean_price(preco_raw)
 
@@ -102,22 +104,21 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
         print(f"⚠ Erro na extração RMP: {e}")
         return None
 
-# ===================== SALVAMENTO E EXECUTOR ===================== #
-def salvar_json_final(lista_itens):
+# ===================== PREPARAÇÃO DE DADOS PARA O BANCO ===================== #
+def preparar_dados_finais(lista_itens):
+    """
+    Monta o dicionário mestre com o nome do fornecedor fixo: 'RMP'
+    """
     agora = datetime.now()
-    dados_finais = {
-        "data_processamento_lote": agora.strftime("%d/%m/%Y %H:%M:%S"),
-        "fornecedror": "RMP",
+    return {
+        "data_processamento_lote": agora.strftime("%d/%m/%Y %H:%M:%S"), 
+        "data_obj": agora, # Objeto datetime para o Banco (Postgres)
+        "fornecedror": "RMP", # <--- NOME DO FORNECEDOR
         "total_itens": len(lista_itens),
         "itens": lista_itens
     }
-    pasta = "data/hist_dados"
-    if not os.path.exists(pasta): os.makedirs(pasta)
-    caminho = os.path.join(pasta, f"resultado_rmp_{agora.strftime('%Y%m%d_%H%M%S')}.json")
-    with open(caminho, 'w', encoding='utf-8') as f:
-        json.dump(dados_finais, f, indent=4, ensure_ascii=False)
-    return caminho
 
+# ===================== EXECUTOR SEQUENCIAL ===================== #
 async def processar_lista_produtos_sequencial(page, lista_produtos):
     itens_extraidos = []
     selector_input = "#search-cod-fab-input"
@@ -136,9 +137,7 @@ async def processar_lista_produtos_sequencial(page, lista_produtos):
             await campo.type(codigo, delay=100)
             await page.keyboard.press("Enter")
             
-            # 2. Aguarda o carregamento da página de resultados
-            # Em sites Magento, esperar por 'networkidle' ou um tempo fixo ajuda
-            # pois o preço é injetado via JS após o HTML carregar.
+            # 2. Aguarda o carregamento
             await page.wait_for_load_state("networkidle")
             await asyncio.sleep(2) 
 
@@ -153,7 +152,26 @@ async def processar_lista_produtos_sequencial(page, lista_produtos):
             print(f"❌ Falha no loop RMP: {e}")
             await page.reload()
 
+    # ==========================================================
+    # 👇👇 SALVAMENTO APENAS NO BANCO DE DADOS 👇👇
+    # ==========================================================
     if itens_extraidos:
-        salvar_json_final(itens_extraidos)
+        # 1. Filtra itens vazios ou com erro
+        validos = [r for r in itens_extraidos if r and r.get("codigo")]
+        
+        if validos:
+            # 2. Prepara os dados
+            dados_completos = preparar_dados_finais(validos)
+
+            # 3. Salva no PostgreSQL
+            if salvar_lote_postgres:
+                print("⏳ Enviando dados para o PostgreSQL...")
+                sucesso = salvar_lote_postgres(dados_completos)
+                if sucesso:
+                    print("✅ Dados salvos no banco com sucesso!")
+                else:
+                    print("❌ Falha ao salvar no banco.")
+            else:
+                print("ℹ️ Salvamento de banco pulado (módulo não importado).")
     
     return itens_extraidos
