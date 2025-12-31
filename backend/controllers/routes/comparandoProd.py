@@ -1,5 +1,6 @@
 # controllers/routes/comparandoProd.py
 import psycopg2
+import json
 from configs.db import get_connection
 
 def comparar_precos_entre_fornecedores():
@@ -8,10 +9,7 @@ def comparar_precos_entre_fornecedores():
         conn = get_connection()
         cursor = conn.cursor()
 
-        # QUERY INTELIGENTE:
-        # 1. Junta os Itens com os Lotes (para saber o nome do fornecedor).
-        # 2. Ordena por data para pegar sempre o preço mais recente caso tenha duplicatas.
-        # 3. Filtra apenas preços maiores que 0.
+        # ... (Sua Query permanece igual) ...
         query = """
             SELECT 
                 ip.codigo_produto,
@@ -20,18 +18,28 @@ def comparar_precos_entre_fornecedores():
                 pl.fornecedor,
                 ip.preco_unitario,
                 ip.qtd_disponivel,
-                pl.data_processamento
+                pl.data_processamento,
+                COALESCE(
+                    json_agg(
+                        json_build_object(
+                            'uf', idr.uf,
+                            'preco', idr.preco_regional,
+                            'estoque', idr.qtd_disponivel_regional
+                        ) ORDER BY idr.uf ASC
+                    ) FILTER (WHERE idr.id IS NOT NULL),
+                    '[]'::json
+                ) as regioes
             FROM itens_processados ip
             JOIN processamentos_lotes pl ON ip.lote_id = pl.id
+            LEFT JOIN itens_detalhes_regionais idr ON ip.id = idr.item_id
             WHERE ip.preco_unitario > 0
+            GROUP BY ip.id, pl.id, ip.codigo_produto, ip.nome_produto, ip.imagem_url, pl.fornecedor, ip.preco_unitario, ip.qtd_disponivel, pl.data_processamento
             ORDER BY ip.codigo_produto, pl.data_processamento DESC;
         """
         
         cursor.execute(query)
         resultados = cursor.fetchall()
         
-        # Dicionário para organizar a comparação
-        # Estrutura: { "CODIGO_123": { "dados_produto": ..., "ofertas": [...] } }
         produtos_map = {}
 
         for row in resultados:
@@ -41,50 +49,67 @@ def comparar_precos_entre_fornecedores():
             fornecedor = row[3]
             preco = float(row[4])
             estoque = row[5]
-            data = row[6]
+            data = row[6] # Esta variável já é um objeto datetime vindo do banco
+            regioes_raw = row[7]
 
-            # Se o produto ainda não está no mapa, inicializa
+            # Formata a data vinda do banco para DD/MM/YYYY
+            # Verifica se data existe para evitar erro caso venha None
+            data_formatada = data.strftime('%d/%m/%Y') if data else "Data N/D"
+
+            # Processa e formata os preços das regiões
+            regioes_formatadas = []
+            if regioes_raw:
+                for reg in regioes_raw:
+                    p_reg = float(reg['preco']) if reg['preco'] else 0.0
+                    regioes_formatadas.append({
+                        "uf": reg['uf'],
+                        "preco": p_reg,
+                        "preco_formatado": f"R$ {p_reg:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+                        "estoque": reg['estoque']
+                    })
+
             if codigo not in produtos_map:
                 produtos_map[codigo] = {
                     "codigo": codigo,
                     "nome": nome,
                     "imagem": imagem,
-                    "melhor_preco": float('inf'), # Infinito para começar
+                    "melhor_preco": float('inf'),
                     "fornecedor_vencedor": None,
                     "ofertas": []
                 }
 
-            # Verifica se essa oferta já foi processada para esse fornecedor 
-            # (evita duplicidade se tivermos vários lotes do mesmo fornecedor, pegamos o primeiro pq ordenamos por data DESC)
+            # Verifica duplicidade (sua lógica original mantida)
             fornecedores_existentes = [o['fornecedor'] for o in produtos_map[codigo]['ofertas']]
             if fornecedor in fornecedores_existentes:
                 continue
 
-            # Adiciona a oferta na lista
+            # Monta a oferta usando a data formatada do banco
             oferta = {
                 "fornecedor": fornecedor,
                 "preco": preco,
                 "preco_formatado": f"R$ {preco:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
                 "estoque": estoque,
-                "data_atualizacao": data.strftime("%d/%m/%Y %H:%M")
+                
+                # 🟢 ALTERADO AQUI: Usa a data do banco formatada
+                "data_atualizacao": data_formatada, 
+                
+                "regioes": regioes_formatadas 
             }
+            
             produtos_map[codigo]['ofertas'].append(oferta)
 
-            # Verifica se é o novo preço vencedor (menor preço)
             if preco < produtos_map[codigo]['melhor_preco']:
                 produtos_map[codigo]['melhor_preco'] = preco
                 produtos_map[codigo]['fornecedor_vencedor'] = fornecedor
 
-        # Formatação final da lista
+        # Formatação final (mantida igual)
         lista_comparada = []
         for cod, dados in produtos_map.items():
-            # Formata o melhor preço para string BR
             melhor_val = dados['melhor_preco']
+            if melhor_val == float('inf'): melhor_val = 0.0
+                
             dados['melhor_preco_formatado'] = f"R$ {melhor_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            
-            # Ordena as ofertas do menor para o maior preço dentro do produto
             dados['ofertas'].sort(key=lambda x: x['preco'])
-            
             lista_comparada.append(dados)
 
         return {
