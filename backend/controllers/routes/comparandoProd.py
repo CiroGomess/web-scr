@@ -9,7 +9,9 @@ def comparar_precos_entre_fornecedores():
         conn = get_connection()
         cursor = conn.cursor()
 
-        # ... (Sua Query permanece igual) ...
+        # ============================================================================
+        # 🧠 QUERY INTELIGENTE COM AGREGAÇÃO JSON
+        # ============================================================================
         query = """
             SELECT 
                 ip.codigo_produto,
@@ -19,6 +21,7 @@ def comparar_precos_entre_fornecedores():
                 ip.preco_unitario,
                 ip.qtd_disponivel,
                 pl.data_processamento,
+                -- Agrupa as regiões em uma lista JSON. Se não tiver, retorna lista vazia [].
                 COALESCE(
                     json_agg(
                         json_build_object(
@@ -49,14 +52,15 @@ def comparar_precos_entre_fornecedores():
             fornecedor = row[3]
             preco = float(row[4])
             estoque = row[5]
-            data = row[6] # Esta variável já é um objeto datetime vindo do banco
-            regioes_raw = row[7]
+            data = row[6] # Objeto datetime vindo do banco
+            regioes_raw = row[7] # Lista de dicionários vinda do banco
 
-            # Formata a data vinda do banco para DD/MM/YYYY
-            # Verifica se data existe para evitar erro caso venha None
-            data_formatada = data.strftime('%d/%m/%Y') if data else "Data N/D"
+            # ------------------------------------------------------------------
+            # 🟢 CORREÇÃO AQUI: Formata a data do banco (Timestamp -> String)
+            # ------------------------------------------------------------------
+            data_formatada = data.strftime('%d/%m/%Y') if data else ""
 
-            # Processa e formata os preços das regiões
+            # Processa e formata os preços das regiões para o padrão BRL
             regioes_formatadas = []
             if regioes_raw:
                 for reg in regioes_raw:
@@ -68,6 +72,7 @@ def comparar_precos_entre_fornecedores():
                         "estoque": reg['estoque']
                     })
 
+            # Inicializa o produto no mapa se não existir
             if codigo not in produtos_map:
                 produtos_map[codigo] = {
                     "codigo": codigo,
@@ -78,19 +83,19 @@ def comparar_precos_entre_fornecedores():
                     "ofertas": []
                 }
 
-            # Verifica duplicidade (sua lógica original mantida)
+            # Verifica duplicidade de fornecedor (pega sempre o mais recente do topo da query)
             fornecedores_existentes = [o['fornecedor'] for o in produtos_map[codigo]['ofertas']]
             if fornecedor in fornecedores_existentes:
                 continue
 
-            # Monta a oferta usando a data formatada do banco
+            # Monta a oferta com as regiões inclusas
             oferta = {
                 "fornecedor": fornecedor,
                 "preco": preco,
                 "preco_formatado": f"R$ {preco:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
                 "estoque": estoque,
                 
-                # 🟢 ALTERADO AQUI: Usa a data do banco formatada
+                # 🟢 CORREÇÃO AQUI: Usa a variável formatada em vez do texto fixo
                 "data_atualizacao": data_formatada, 
                 
                 "regioes": regioes_formatadas 
@@ -98,18 +103,22 @@ def comparar_precos_entre_fornecedores():
             
             produtos_map[codigo]['ofertas'].append(oferta)
 
+            # Define o vencedor (Menor Preço)
             if preco < produtos_map[codigo]['melhor_preco']:
                 produtos_map[codigo]['melhor_preco'] = preco
                 produtos_map[codigo]['fornecedor_vencedor'] = fornecedor
 
-        # Formatação final (mantida igual)
+        # Formatação final da lista de retorno
         lista_comparada = []
         for cod, dados in produtos_map.items():
             melhor_val = dados['melhor_preco']
             if melhor_val == float('inf'): melhor_val = 0.0
                 
             dados['melhor_preco_formatado'] = f"R$ {melhor_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            
+            # Ordena ofertas pelo preço
             dados['ofertas'].sort(key=lambda x: x['preco'])
+            
             lista_comparada.append(dados)
 
         return {
