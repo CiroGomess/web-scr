@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { useRouter } from "next/navigation"; // Importar router
+import { useRouter } from "next/navigation";
 import services from "../../services/service"; 
+// 🟢 IMPORT DO CONTEXTO DO CARRINHO
+import { useCart } from "../../contexts/CartContext"; 
 import { 
   Inventory2Outlined, 
   Search, 
@@ -14,8 +16,9 @@ import {
   AccessTimeOutlined,
   FilterAltOutlined,
   MapOutlined,
-  WarningAmberRounded, // Ícone de alerta
-  CloudUploadOutlined // Ícone de upload
+  WarningAmberRounded,
+  CloudUploadOutlined,
+  AddShoppingCart // 🟢 IMPORT DO ÍCONE
 } from "@mui/icons-material";
 
 /* =======================
@@ -52,10 +55,14 @@ type ProdutoComparado = {
 
 export default function ComparativoPrecosPage() {
   const router = useRouter();
+  
+  // 🟢 HOOK DO CARRINHO
+  const { addToCart } = useCart(); 
+
   const [produtos, setProdutos] = useState<ProdutoComparado[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dataLote, setDataLote] = useState<string>(""); // Data do arquivo
-  const [dadosDesatualizados, setDadosDesatualizados] = useState(false); // Flag de alerta
+  const [dataLote, setDataLote] = useState<string>(""); 
+  const [dadosDesatualizados, setDadosDesatualizados] = useState(false);
   
   // Estados dos Filtros
   const [search, setSearch] = useState("");
@@ -63,20 +70,17 @@ export default function ComparativoPrecosPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   /* =======================
-     VERIFICAÇÃO DE DATA
+      VERIFICAÇÃO DE DATA
   ======================= */
   const verificarData = (dataString: string) => {
     if (!dataString) return;
 
-    // Converte "DD/MM/YYYY" para objeto Date
     const [dia, mes, ano] = dataString.split('/').map(Number);
-    const dataArquivo = new Date(ano, mes - 1, dia); // Mês começa em 0 no JS
+    const dataArquivo = new Date(ano, mes - 1, dia); 
 
-    // Pega a data de hoje (Zera as horas para comparar apenas dia)
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
 
-    // Se a data do arquivo for menor que hoje, está desatualizado
     if (dataArquivo < hoje) {
         setDadosDesatualizados(true);
     } else {
@@ -87,7 +91,7 @@ export default function ComparativoPrecosPage() {
   };
 
   /* =======================
-     CARREGAMENTO
+      CARREGAMENTO
   ======================= */
   async function carregar() {
     setLoading(true);
@@ -124,10 +128,10 @@ export default function ComparativoPrecosPage() {
                  const precoRegOriginal = reg.preco;
                  const novoPrecoReg = precoRegOriginal * 0.96;
                  return {
-                    ...reg,
-                    preco: novoPrecoReg,
-                    preco_original: precoRegOriginal,
-                    preco_formatado: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(novoPrecoReg)
+                   ...reg,
+                   preco: novoPrecoReg,
+                   preco_original: precoRegOriginal,
+                   preco_formatado: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(novoPrecoReg)
                  };
               });
 
@@ -143,7 +147,7 @@ export default function ComparativoPrecosPage() {
             return oferta;
           });
 
-          // Recalcula o Vencedor
+          // Recalcula o Vencedor após descontos
           const ofertasOrdenadas = [...ofertasAtualizadas].sort((a, b) => a.preco - b.preco);
           const melhorOferta = ofertasOrdenadas[0];
 
@@ -170,7 +174,7 @@ export default function ComparativoPrecosPage() {
   }, []);
 
   /* =======================
-     EXTRAÇÃO DE FORNECEDORES
+      EXTRAÇÃO DE FORNECEDORES
   ======================= */
   const listaFornecedores = useMemo(() => {
     const fornecedoresSet = new Set<string>();
@@ -183,7 +187,7 @@ export default function ComparativoPrecosPage() {
   }, [produtos]);
 
   /* =======================
-     FILTROS
+      FILTROS
   ======================= */
   const produtosFiltrados = produtos.filter((p) => {
     const termo = search.toLowerCase();
@@ -207,7 +211,7 @@ export default function ComparativoPrecosPage() {
   const totalOfertas = produtos.reduce((acc, p) => acc + (p.ofertas?.length || 0), 0);
 
   /* =======================
-     RENDERIZAÇÃO
+      RENDERIZAÇÃO
   ======================= */
   if (loading) {
     return (
@@ -445,32 +449,60 @@ export default function ComparativoPrecosPage() {
                                 </div>
                             )}
 
-                            <div className="mt-auto pt-3 border-t border-gray-100 flex items-end justify-between">
-                                <div>
-                                    <span className="block text-[10px] text-gray-500 uppercase">Estoque Total</span>
-                                    <span className={`text-sm font-medium ${oferta.estoque > 0 ? 'text-gray-700' : 'text-red-400'}`}>
-                                        {oferta.estoque} un
-                                    </span>
-                                </div>
-                                
-                                <div className="text-right">
-                                    {/* 🔴 VISUAL DO DESCONTO (4% OFF) */}
-                                    {oferta.teve_desconto && (
-                                      <div className="flex flex-col items-end mb-1">
-                                        <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">
-                                          4% OFF
+                            <div className="mt-auto pt-3 border-t border-gray-100">
+                                <div className="flex items-end justify-between mb-3">
+                                    <div>
+                                        <span className="block text-[10px] text-gray-500 uppercase">Estoque Total</span>
+                                        <span className={`text-sm font-medium ${oferta.estoque > 0 ? 'text-gray-700' : 'text-red-400'}`}>
+                                            {oferta.estoque} un
                                         </span>
-                                        <span className="text-xs text-gray-400 line-through decoration-gray-400">
-                                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(oferta.preco_original || 0)}
-                                        </span>
-                                      </div>
-                                    )}
+                                    </div>
+                                    
+                                    <div className="text-right">
+                                        {/* 🔴 VISUAL DO DESCONTO (4% OFF) */}
+                                        {oferta.teve_desconto && (
+                                          <div className="flex flex-col items-end mb-1">
+                                            <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">
+                                              4% OFF
+                                            </span>
+                                            <span className="text-xs text-gray-400 line-through decoration-gray-400">
+                                              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(oferta.preco_original || 0)}
+                                            </span>
+                                          </div>
+                                        )}
 
-                                    <span className={`text-lg font-bold ${isWinner ? 'text-emerald-600' : 'text-gray-700'}`}>
-                                        {oferta.preco_formatado}
-                                    </span>
+                                        <span className={`text-lg font-bold ${isWinner ? 'text-emerald-600' : 'text-gray-700'}`}>
+                                            {oferta.preco_formatado}
+                                        </span>
+                                    </div>
                                 </div>
+
+                                {/* 🟢 BOTÃO DE ADICIONAR AO CARRINHO */}
+                                <button
+                                   onClick={(e) => {
+                                     e.stopPropagation(); // Evita que o click feche o accordion se houvesse evento
+                                     addToCart({
+                                       uid: `${produto.codigo}-${oferta.fornecedor}`,
+                                       codigo: produto.codigo,
+                                       nome: produto.nome,
+                                       imagem: produto.imagem,
+                                       fornecedor: oferta.fornecedor,
+                                       preco: oferta.preco,
+                                       quantidade: 1
+                                     });
+                                   }}
+                                   className={`w-full py-2 px-3 rounded-lg flex items-center justify-center gap-2 text-sm font-bold transition-all
+                                     ${isWinner 
+                                       ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200 shadow-md' 
+                                       : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-100'
+                                     }
+                                   `}
+                                 >
+                                   <AddShoppingCart fontSize="small" />
+                                   Adicionar
+                                 </button>
                             </div>
+
                           </div>
                         )
                       })}
