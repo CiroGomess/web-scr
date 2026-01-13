@@ -10,13 +10,12 @@ import {
   ListItemText,
   Typography,
   Box,
-  Divider,
 } from "@mui/material";
 
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import SearchIcon from "@mui/icons-material/Search";
-import Inventory2Icon from "@mui/icons-material/Inventory2"; // Ícone de Logo
-import DashboardIcon from "@mui/icons-material/Dashboard"; // Exemplo extra
+
+import logo from "../../assets/logo.png";
 
 const drawerWidth = 260; // Largura um pouco mais compacta e elegante
 
@@ -65,28 +64,28 @@ export default function Sidebar() {
         },
       }}
     >
-      {/* --- ÁREA DO LOGO --- */}
+   
       <Box
         sx={{
-          height: 64, // Altura padrão do header
+          height: 64,
           display: "flex",
           alignItems: "center",
+          justifyContent: "center",
           px: 3,
           borderBottom: "1px solid #F1F5F9",
           backgroundColor: "#ffffff",
         }}
       >
-        <Inventory2Icon sx={{ color: colors.primary, mr: 1.5, fontSize: 30 }} />
-        <Typography
-          variant="h6"
+        <Box
+          component="img"
+          src={logo.src}
+          alt="Logo"
           sx={{
-            fontWeight: 700,
-            color: colors.primary,
-            letterSpacing: "-0.5px",
+            height: 44,      // ajuste aqui para maior/menor
+            width: "auto",
+            objectFit: "contain",
           }}
-        >
-          Portal Admin
-        </Typography>
+        />
       </Box>
 
       {/* --- MENU --- */}
@@ -114,16 +113,16 @@ export default function Sidebar() {
                   // Barra lateral indicando ativo (opcional, mas chique)
                   "&::before": active
                     ? {
-                        content: '""',
-                        position: "absolute",
-                        left: "-8px",
-                        top: "50%",
-                        transform: "translateY(-50%)",
-                        height: "20px",
-                        width: "4px",
-                        backgroundColor: colors.primary,
-                        borderRadius: "0 4px 4px 0",
-                      }
+                      content: '""',
+                      position: "absolute",
+                      left: "-8px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      height: "20px",
+                      width: "4px",
+                      backgroundColor: colors.primary,
+                      borderRadius: "0 4px 4px 0",
+                    }
                     : {},
                 }}
               >
