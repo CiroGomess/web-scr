@@ -14,7 +14,7 @@ USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/15 Safari/605.1.15"
 ]
 
-HEADLESS = False 
+HEADLESS = True 
 
 # ===================== AUXILIARES ===================== #
 

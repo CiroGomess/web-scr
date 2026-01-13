@@ -16,7 +16,7 @@ USER_AGENTS = [
     "Mozilla/5.0 (Linux; Android 11; SM-G991B) AppleWebKit/537.36 Chrome/115 Mobile Safari/537.36"
 ]
 
-HEADLESS = False  # mude para False quando quiser ver o navegador
+HEADLESS = True  # mude para False quando quiser ver o navegador
 
 
 # ===================== ACEITAR COOKIES ===================== #
