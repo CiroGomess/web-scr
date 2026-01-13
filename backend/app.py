@@ -18,6 +18,11 @@ from runner_carrinho import executar_automacao_carrinho
 # Controllers
 from controllers.dadosController import carregar_lote_mais_recente
 from controllers.routes.comparandoProd import comparar_precos_entre_fornecedores
+from configs.db import get_connection
+from zoneinfo import ZoneInfo
+
+
+
 
 
 app = Flask(__name__, template_folder="views")
@@ -45,6 +50,36 @@ def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+def atualizar_ultimo_processamento(dt_br):
+    conn = None
+    cursor = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            INSERT INTO controle_ultimo_processamento (id, ultima_data_processamento, atualizado_em)
+            VALUES (1, %s, %s)
+            ON CONFLICT (id) DO UPDATE
+            SET ultima_data_processamento = EXCLUDED.ultima_data_processamento,
+                atualizado_em = EXCLUDED.atualizado_em;
+        """, (dt_br, dt_br))
+
+        conn.commit()
+
+    except Exception:
+        if conn:
+            conn.rollback()
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+
 # ====================================================================
 # 📂 ROTA DE UPLOAD (🔒 PROTEGIDA)
 # ====================================================================
@@ -63,19 +98,40 @@ def upload_file():
         if not allowed_file(file.filename):
             return jsonify({"success": False, "message": "Formato não permitido. Envie .xlsx"}), 400
 
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        # Data/hora Brasil (Fortaleza)
+        br_tz = ZoneInfo("America/Fortaleza")
+        now_br = datetime.now(br_tz)
+
+        timestamp = now_br.strftime("%Y-%m-%d_%H-%M-%S")
         original = file.filename.replace(" ", "_")
         final_name = f"{timestamp}_{original}"
 
         save_path = os.path.join(UPLOAD_FOLDER, final_name)
         file.save(save_path)
 
+        # Atualiza no banco a última data de processamento
+        try:
+            atualizar_ultimo_processamento(now_br)
+        except Exception as db_err:
+            # Se falhar no banco, você pode optar por remover o arquivo para não ficar "upload sem registro"
+            try:
+                os.remove(save_path)
+            except Exception:
+                pass
+
+            return jsonify({
+                "success": False,
+                "message": "Upload salvo, mas falhou ao registrar no banco",
+                "error": str(db_err)
+            }), 500
+
         return jsonify({
             "success": True,
             "message": "Upload realizado com sucesso!",
             "data": {
                 "file_path": save_path,
-                "saved_as": final_name
+                "saved_as": final_name,
+                "data_processamento_br": now_br.isoformat()
             }
         }), 200
 
@@ -86,6 +142,7 @@ def upload_file():
             "message": "Erro interno no servidor",
             "error": str(e)
         }), 500
+
 
 
 # ====================================================================

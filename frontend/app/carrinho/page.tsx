@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import CheckoutModal from "../../components/cart/CheckoutModal";
 
 export default function CarrinhoPage() {
-  const { cart, removeFromCart, clearFromCart, clearCart } = useCart() as any;
+  const { cart, removeFromCart } = useCart() as any;
   const router = useRouter();
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -27,22 +27,25 @@ export default function CarrinhoPage() {
 
   // ===========================
   // DASH RESUMO POR FORNECEDOR
-  // DESCONTO: SOMENTE PORTALCOMDIP (4%)
+  // ✅ Sem desconto duplicado:
+  // desconto = soma (preco_original - preco) * qtd, quando existir preco_original
   // ===========================
   const dashFornecedores = useMemo(() => {
     const entries = Object.entries(itensPorFornecedor).map(([fornecedor, itens]) => {
       const qtdProdutos = (itens as any[]).reduce((acc, i) => acc + (i.quantidade || 0), 0);
+
       const subtotal = (itens as any[]).reduce((acc, i) => acc + i.preco * i.quantidade, 0);
 
-      const fornecedorLower = (fornecedor || "").toString().toLowerCase().trim();
-      const isPortalComDip =
-        fornecedorLower === "portalcomdip" ||
-        fornecedorLower.includes("portalcomdip") ||
-        fornecedorLower.includes("portal com dip");
+      const descontoValor = (itens as any[]).reduce((acc, i) => {
+        const original = typeof i.preco_original === "number" ? i.preco_original : null;
+        if (original === null) return acc;
 
-      const descontoPct = isPortalComDip ? 0.04 : 0;
-      const descontoValor = subtotal * descontoPct;
-      const totalComDesconto = subtotal - descontoValor;
+        const diff = Math.max(0, (original - i.preco) * (i.quantidade || 0));
+        return acc + diff;
+      }, 0);
+
+      const totalComDesconto = subtotal; // ✅ já está com desconto no preço final
+      const descontoPct = subtotal > 0 ? descontoValor / (subtotal + descontoValor) : 0;
 
       return {
         fornecedor: fornecedor as string,
@@ -61,7 +64,6 @@ export default function CarrinhoPage() {
     return { entries, totalGeralComDescontos };
   }, [itensPorFornecedor]);
 
-  // Layout vazio
   if (cart.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 text-center">
@@ -95,9 +97,7 @@ export default function CarrinhoPage() {
           </button>
         </div>
 
-        {/* ===========================
-            DASH / RESUMO POR FORNECEDOR
-           =========================== */}
+        {/* DASH */}
         <div className="mb-8">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="p-4 md:p-5 border-b border-gray-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
@@ -107,7 +107,7 @@ export default function CarrinhoPage() {
               </div>
 
               <div className="text-right">
-                <p className="text-xs text-gray-500">Total geral (com descontos aplicáveis)</p>
+                <p className="text-xs text-gray-500">Total geral (valores finais)</p>
                 <p className="text-2xl font-bold text-indigo-700">
                   {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
                     dashFornecedores.totalGeralComDescontos
@@ -119,10 +119,7 @@ export default function CarrinhoPage() {
             <div className="p-4 md:p-5">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {dashFornecedores.entries.map((e) => (
-                  <div
-                    key={e.fornecedor}
-                    className="rounded-xl border border-gray-200 bg-gray-50 p-4 hover:bg-gray-100 transition"
-                  >
+                  <div key={e.fornecedor} className="rounded-xl border border-gray-200 bg-gray-50 p-4 hover:bg-gray-100 transition">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
                         <Storefront className="text-indigo-600" />
@@ -134,42 +131,28 @@ export default function CarrinhoPage() {
                         </div>
                       </div>
 
-                      {e.descontoPct > 0 && (
+                      {e.descontoValor > 0 && (
                         <span className="text-[11px] font-bold bg-green-100 text-green-700 px-2 py-1 rounded-full">
-                          -{Math.round(e.descontoPct * 100)}% desconto
+                          desconto aplicado
                         </span>
                       )}
                     </div>
 
                     <div className="mt-4 space-y-2">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-600">Subtotal</span>
-                        <span className="font-bold text-gray-900">
-                          {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(e.subtotal)}
-                        </span>
-                      </div>
-
-                      {e.descontoPct > 0 && (
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-600">Desconto</span>
-                          <span className="font-bold text-green-700">
-                            -{" "}
-                            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(e.descontoValor)}
-                          </span>
-                        </div>
-                      )}
-
-                      <div className="flex items-center justify-between text-sm pt-2 border-t border-gray-200">
-                        <span className="text-gray-700 font-medium">Total</span>
+                        <span className="text-gray-600">Total (itens)</span>
                         <span className="font-extrabold text-indigo-700">
                           {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(e.totalComDesconto)}
                         </span>
                       </div>
 
-                      {e.descontoPct > 0 && (
-                        <p className="text-[11px] text-gray-500 pt-1">
-                          Desconto aplicado automaticamente para <span className="font-bold">{e.fornecedor}</span>.
-                        </p>
+                      {e.descontoValor > 0 && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-600">Desconto total (info)</span>
+                          <span className="font-bold text-green-700">
+                            - {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(e.descontoValor)}
+                          </span>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -177,28 +160,23 @@ export default function CarrinhoPage() {
               </div>
 
               <p className="text-xs text-gray-500 mt-4">
-                Observação: o desconto de 4% é aplicado apenas ao fornecedor <span className="font-bold">portalcomdip</span>.
+                Observação: o carrinho usa o <span className="font-bold">preço final</span> (já com desconto quando aplicável) e
+                apenas <span className="font-bold">exibe</span> o valor de desconto quando houver <span className="font-bold">preço original</span>.
               </p>
             </div>
           </div>
         </div>
 
-        {/* ===========================
-            LISTA DE FORNECEDORES / ITENS
-           =========================== */}
+        {/* LISTA */}
         <div className="space-y-8">
           {Object.entries(itensPorFornecedor).map(([fornecedor, itens]) => {
-            const subtotalFornecedor = (itens as any[]).reduce((acc, i) => acc + i.preco * i.quantidade, 0);
+            const totalFornecedor = (itens as any[]).reduce((acc, i) => acc + i.preco * i.quantidade, 0);
 
-            const fornecedorLower = (fornecedor || "").toString().toLowerCase().trim();
-            const isPortalComDip =
-              fornecedorLower === "portalcomdip" ||
-              fornecedorLower.includes("portalcomdip") ||
-              fornecedorLower.includes("portal com dip");
-
-            const descontoPct = isPortalComDip ? 0.04 : 0;
-            const descontoValor = subtotalFornecedor * descontoPct;
-            const totalFornecedor = subtotalFornecedor - descontoValor;
+            const descontoValorFornecedor = (itens as any[]).reduce((acc, i) => {
+              const original = typeof i.preco_original === "number" ? i.preco_original : null;
+              if (original === null) return acc;
+              return acc + Math.max(0, (original - i.preco) * (i.quantidade || 0));
+            }, 0);
 
             return (
               <div key={fornecedor} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -208,41 +186,33 @@ export default function CarrinhoPage() {
                     <Storefront className="text-indigo-600" />
                     <h3 className="font-bold text-lg text-gray-800">{fornecedor}</h3>
 
-                    {descontoPct > 0 && (
+                    {descontoValorFornecedor > 0 && (
                       <span className="text-[11px] font-bold bg-green-100 text-green-700 px-2 py-1 rounded-full">
-                        -{Math.round(descontoPct * 100)}% desconto
+                        desconto aplicado
                       </span>
                     )}
                   </div>
 
                   <div className="text-sm text-gray-600 text-right">
                     <div>
-                      Subtotal:{" "}
-                      <span className="font-bold text-gray-900 ml-1">
-                        {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(subtotalFornecedor)}
-                      </span>
-                    </div>
-
-                    {descontoPct > 0 && (
-                      <div>
-                        Desconto:{" "}
-                        <span className="font-bold text-green-700 ml-1">
-                          -{" "}
-                          {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(descontoValor)}
-                        </span>
-                      </div>
-                    )}
-
-                    <div>
                       Total:{" "}
                       <span className="font-extrabold text-indigo-700 ml-1">
                         {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(totalFornecedor)}
                       </span>
                     </div>
+
+                    {descontoValorFornecedor > 0 && (
+                      <div>
+                        Desconto (info):{" "}
+                        <span className="font-bold text-green-700 ml-1">
+                          - {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(descontoValorFornecedor)}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Lista de Itens */}
+                {/* Itens */}
                 <div className="divide-y divide-gray-100">
                   {(itens as any[]).map((item) => (
                     <div key={item.uid} className="p-4 flex flex-col sm:flex-row items-center gap-4 hover:bg-gray-50 transition">
@@ -255,17 +225,30 @@ export default function CarrinhoPage() {
                       <div className="flex-1 text-center sm:text-left">
                         <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{item.codigo}</p>
                         <h4 className="font-medium text-gray-800 line-clamp-1">{item.nome}</h4>
+
+                        {/* ✅ UF/Região */}
+                        {item.uf && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Região (UF): <span className="font-bold text-gray-700">{item.uf}</span>
+                          </p>
+                        )}
+
                         <p className="text-sm text-gray-500 mt-1">
                           {item.quantidade}x{" "}
                           {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(item.preco)}
                         </p>
+
+                        {/* opcional: mostrar preço original quando houver */}
+                        {typeof item.preco_original === "number" && item.preco_original > item.preco && (
+                          <p className="text-xs text-gray-400 mt-1 line-through">
+                            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(item.preco_original)}
+                          </p>
+                        )}
                       </div>
 
                       <div className="text-right flex flex-col items-end">
                         <div className="font-bold text-gray-900 text-lg">
-                          {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-                            item.preco * item.quantidade
-                          )}
+                          {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(item.preco * item.quantidade)}
                         </div>
                         <button
                           onClick={() => removeFromCart(item.uid)}
@@ -278,7 +261,7 @@ export default function CarrinhoPage() {
                   ))}
                 </div>
 
-                {/* Botão de Enviar Pedido Específico */}
+                {/* Enviar Pedido */}
                 <div className="p-4 bg-gray-50 border-t border-gray-200 text-right">
                   <button
                     onClick={() => handleEnviarPedido(fornecedor, itens as any)}
@@ -292,20 +275,10 @@ export default function CarrinhoPage() {
           })}
         </div>
 
-        {/* ===========================
-            AÇÕES DO CARRINHO (SEM VALOR TOTAL ESTIMADO)
-           =========================== */}
-       
+        {checkoutData && (
+          <CheckoutModal open={modalOpen} onClose={() => setModalOpen(false)} fornecedor={checkoutData.fornecedor} itens={checkoutData.itens} />
+        )}
       </div>
-
-      {checkoutData && (
-        <CheckoutModal
-          open={modalOpen}
-          onClose={() => setModalOpen(false)}
-          fornecedor={checkoutData.fornecedor}
-          itens={checkoutData.itens}
-        />
-      )}
     </div>
   );
 }

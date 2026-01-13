@@ -3,14 +3,22 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
 // Definição do item do carrinho
-type CartItem = {
-  uid: string; // ID único (codigo + fornecedor) para diferenciar ofertas
+export type CartItem = {
+  uid: string; // ID único (codigo + fornecedor + uf) para diferenciar ofertas/UF
   codigo: string;
   nome: string;
   imagem: string;
   fornecedor: string;
   preco: number;
   quantidade: number;
+
+  // ✅ NOVOS CAMPOS (para mostrar a região no carrinho)
+  uf?: string; // Ex: "SP", "RJ", ...
+  origem?: "REGIAO" | "OFERTA_GERAL" | string;
+
+  // ✅ Para evitar desconto duplicado no carrinho e permitir exibição
+  preco_original?: number; // preço antes do desconto (se existir)
+  teve_desconto?: boolean;
 };
 
 type CartContextType = {
@@ -29,9 +37,19 @@ export function CartProvider({ children }: { children: ReactNode }) {
   // Carregar do LocalStorage ao iniciar
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const savedCart = localStorage.getItem("carrinho_compras");
-      if (savedCart) {
-        setCart(JSON.parse(savedCart));
+      try {
+        const savedCart = localStorage.getItem("carrinho_compras");
+        if (savedCart) {
+          const parsed = JSON.parse(savedCart);
+          if (Array.isArray(parsed)) {
+            setCart(parsed);
+          } else {
+            setCart([]);
+          }
+        }
+      } catch (err) {
+        console.error("Erro ao carregar carrinho do localStorage:", err);
+        setCart([]);
       }
     }
   }, []);
@@ -39,22 +57,34 @@ export function CartProvider({ children }: { children: ReactNode }) {
   // Salvar no LocalStorage sempre que mudar
   useEffect(() => {
     if (typeof window !== "undefined") {
-      localStorage.setItem("carrinho_compras", JSON.stringify(cart));
+      try {
+        localStorage.setItem("carrinho_compras", JSON.stringify(cart));
+      } catch (err) {
+        console.error("Erro ao salvar carrinho no localStorage:", err);
+      }
     }
   }, [cart]);
 
   const addToCart = (newItem: CartItem) => {
     setCart((prev) => {
-      // Verifica se o item já existe (mesmo produto E mesmo fornecedor)
+      // Verifica se o item já existe (mesmo uid)
       const exists = prev.find((item) => item.uid === newItem.uid);
+
       if (exists) {
         return prev.map((item) =>
           item.uid === newItem.uid
-            ? { ...item, quantidade: item.quantidade + 1 }
+            ? { ...item, quantidade: (item.quantidade || 0) + 1 }
             : item
         );
       }
-      return [...prev, newItem];
+
+      // Se vier sem quantidade, garante 1
+      const itemToAdd: CartItem = {
+        ...newItem,
+        quantidade: newItem.quantidade && newItem.quantidade > 0 ? newItem.quantidade : 1,
+      };
+
+      return [...prev, itemToAdd];
     });
   };
 
@@ -66,7 +96,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setCart([]);
   };
 
-  const cartCount = cart.reduce((acc, item) => acc + item.quantidade, 0);
+  const cartCount = cart.reduce((acc, item) => acc + (item.quantidade || 0), 0);
 
   return (
     <CartContext.Provider value={{ cart, addToCart, removeFromCart, clearCart, cartCount }}>

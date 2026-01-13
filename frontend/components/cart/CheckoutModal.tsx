@@ -5,9 +5,9 @@ import { Close, ContentCopy, CheckCircle, ShoppingCartCheckout } from "@mui/icon
 import { useEffect, useState } from "react";
 import services from "../../services/service";
 
-import FullScreenProcessingOverlay from "../layout/FullScreenProcessingOverlay"; 
-// ajuste o path conforme sua pasta
+import FullScreenProcessingOverlay from "../layout/FullScreenProcessingOverlay";
 
+// ✅ Ajuste do tipo para suportar UF/região e campos opcionais
 type CartItem = {
   uid: string;
   codigo: string;
@@ -16,6 +16,13 @@ type CartItem = {
   fornecedor: string;
   preco: number;
   quantidade: number;
+
+  // NOVOS (opcionais)
+  uf?: string; // ex: "SP"
+  origem?: "REGIAO" | "OFERTA_GERAL" | string;
+
+  preco_original?: number;
+  teve_desconto?: boolean;
 };
 
 interface CheckoutModalProps {
@@ -65,6 +72,9 @@ export default function CheckoutModal({ open, onClose, fornecedor, itens }: Chec
         itens: itens.map((i) => ({
           codigo: i.codigo,
           quantidade: i.quantidade,
+
+          // ✅ envia UF se existir (backend pode ignorar se não usa)
+          uf: i.uf || undefined,
         })),
       };
 
@@ -74,26 +84,20 @@ export default function CheckoutModal({ open, onClose, fornecedor, itens }: Chec
         headers: { "Content-Type": "application/json" },
       });
 
-      // Se seu services padroniza {success: boolean}, respeite isso aqui
       if (result?.success === false) {
         throw new Error(result?.data?.message || "Falha ao enviar o lote para o robô");
       }
 
-      // Marca todos como enviados
+      // ✅ Marca todos como enviados (melhor chave: uid, pq código pode repetir em UF diferente)
       const novoStatus: Record<string, "success" | "idle"> = {};
-      itens.forEach((i) => (novoStatus[i.codigo] = "success"));
+      itens.forEach((i) => (novoStatus[i.uid] = "success"));
       setItemStatus(novoStatus);
 
-      // Mensagem final rápida
       setBlockingMsg("Lote enviado com sucesso! Abrindo carrinho...");
-
-      // Se você tiver a URL do carrinho do fornecedor, abra aqui:
-      // window.open("https://...", "_blank", "noopener,noreferrer");
 
       setTimeout(() => {
         setBlocking(false);
       }, 900);
-
     } catch (error: any) {
       console.error("Erro ao enviar lote:", error);
       setBlockingMsg("Ocorreu um erro ao enviar para o robô.");
@@ -109,7 +113,14 @@ export default function CheckoutModal({ open, onClose, fornecedor, itens }: Chec
   };
 
   const copyToClipboard = () => {
-    const text = itens.map((i) => `${i.codigo}\t${i.quantidade}`).join("\n");
+    // ✅ Inclui UF na cópia quando existir
+    const text = itens
+      .map((i) => {
+        const uf = i.uf ? `\t${i.uf}` : "";
+        return `${i.codigo}\t${i.quantidade}${uf}`;
+      })
+      .join("\n");
+
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -125,12 +136,7 @@ export default function CheckoutModal({ open, onClose, fornecedor, itens }: Chec
 
   return (
     <>
-      {/* Overlay FULLSCREEN (cobre o app inteiro mesmo) */}
-      <FullScreenProcessingOverlay
-        open={blocking}
-        title="Processamento em andamento"
-        message={blockingMsg}
-      />
+      <FullScreenProcessingOverlay open={blocking} title="Processamento em andamento" message={blockingMsg} />
 
       <Dialog open={open} onClose={handleCloseSafe} maxWidth="md" fullWidth>
         <div className="p-6">
@@ -156,6 +162,17 @@ export default function CheckoutModal({ open, onClose, fornecedor, itens }: Chec
                 {itens.length} itens • Total:{" "}
                 {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(total)}
               </p>
+
+              {/* ✅ Mostra um resumo de UFs presentes */}
+              {(() => {
+                const ufs = Array.from(new Set(itens.map((i) => i.uf).filter(Boolean))) as string[];
+                if (ufs.length === 0) return null;
+                return (
+                  <p className="text-xs text-indigo-700 mt-1">
+                    UFs no lote: <span className="font-bold">{ufs.join(", ")}</span>
+                  </p>
+                );
+              })()}
             </div>
 
             <button
@@ -169,24 +186,34 @@ export default function CheckoutModal({ open, onClose, fornecedor, itens }: Chec
           </div>
 
           <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
-            {itens.map((item, idx) => (
+            {itens.map((item) => (
               <div
-                key={idx}
+                key={item.uid}
                 className="flex items-center gap-4 p-3 border border-gray-100 rounded-lg hover:shadow-sm transition bg-white"
               >
                 <img src={item.imagem} alt={item.nome} className="w-12 h-12 object-contain" />
 
                 <div className="flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-bold bg-gray-100 text-gray-600 px-1.5 rounded">
                       {item.codigo}
                     </span>
+
                     <span className="text-xs text-gray-400">Qtd: {item.quantidade}</span>
+
+                    {/* ✅ Mostra UF quando existir */}
+                    {item.uf && (
+                      <span className="text-[11px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
+                        UF: {item.uf}
+                      </span>
+                    )}
                   </div>
+
                   <p className="text-sm font-medium text-gray-800 line-clamp-1">{item.nome}</p>
                 </div>
 
-                {itemStatus[item.codigo] === "success" && (
+                {/* ✅ Status por UID (evita conflito se repetir código com UF diferente) */}
+                {itemStatus[item.uid] === "success" && (
                   <div className="flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded border border-green-200">
                     <CheckCircle style={{ fontSize: 16 }} /> Enviado
                   </div>
