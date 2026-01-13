@@ -65,6 +65,60 @@ type RetornoComparar = {
   };
 };
 
+/* =======================
+   HELPERS (FORMATAÇÃO)
+======================= */
+function formatBRL(value: number) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value || 0);
+}
+
+function formatPercent(valueDecimal: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "percent",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(valueDecimal || 0);
+}
+
+/* =======================
+   REGRA ICMS ST + FCP (COM SES)
+   ICMS ST + FCP = (BC*18% + BC*2%) - SES(...)
+   SES:
+     - se AGREGADO MVA = 106,14% => CUSTO_ES * 4%
+     - se AGREGADO MVA = 88,96%  => CUSTO_ES * 12%
+     - se AGREGADO MVA = 0       => 0
+======================= */
+const AGREGADO_MVA_ES = 0.8896; // 88,96% (fixo, conforme seu cenário atual)
+
+function approxEqual(a: number, b: number, tolerance = 0.00005) {
+  return Math.abs(a - b) <= tolerance;
+}
+
+function calcSes(agregadoMvaDecimal: number, custoES: number) {
+  if (approxEqual(agregadoMvaDecimal, 1.0614)) return custoES * 0.04; // 106,14%
+  if (approxEqual(agregadoMvaDecimal, 0.8896)) return custoES * 0.12; // 88,96%
+  if (approxEqual(agregadoMvaDecimal, 0)) return 0; // 0%
+  return 0;
+}
+
+function calcTributosES(custoES: number) {
+  const mva = custoES * AGREGADO_MVA_ES;
+  const bcIcmsSt = custoES + mva;
+
+  const ses = calcSes(AGREGADO_MVA_ES, custoES);
+  const icmsStMaisFcp = bcIcmsSt * 0.18 + bcIcmsSt * 0.02 - ses;
+
+  const custoMercadoria = custoES + icmsStMaisFcp;
+
+  return {
+    agregadoMva: AGREGADO_MVA_ES,
+    mva,
+    bcIcmsSt,
+    icmsStMaisFcp,
+    custoMercadoria,
+  };
+}
+
 export default function ComparativoPrecosPage() {
   const router = useRouter();
   const { addToCart } = useCart();
@@ -95,9 +149,7 @@ export default function ComparativoPrecosPage() {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
 
-    if (dataArquivo < hoje) setDadosDesatualizados(true);
-    else setDadosDesatualizados(false);
-
+    setDadosDesatualizados(dataArquivo < hoje);
     setDataLote(dataString);
   };
 
@@ -145,20 +197,14 @@ export default function ComparativoPrecosPage() {
                   ...reg,
                   preco: novoPrecoReg,
                   preco_original: precoRegOriginal,
-                  preco_formatado: new Intl.NumberFormat("pt-BR", {
-                    style: "currency",
-                    currency: "BRL",
-                  }).format(novoPrecoReg),
+                  preco_formatado: formatBRL(novoPrecoReg),
                 };
               });
 
               return {
                 ...oferta,
                 preco: novoPreco,
-                preco_formatado: new Intl.NumberFormat("pt-BR", {
-                  style: "currency",
-                  currency: "BRL",
-                }).format(novoPreco),
+                preco_formatado: formatBRL(novoPreco),
                 preco_original: precoOriginal,
                 teve_desconto: true,
                 regioes: regioesAtualizadas,
@@ -360,7 +406,11 @@ export default function ComparativoPrecosPage() {
               <div
                 key={produto.codigo}
                 className={`bg-white rounded-xl border transition-all duration-300 overflow-hidden
-                  ${isExpanded ? "border-indigo-200 shadow-md ring-1 ring-indigo-50" : "border-gray-200 shadow-sm hover:border-gray-300"}
+                  ${
+                    isExpanded
+                      ? "border-indigo-200 shadow-md ring-1 ring-indigo-50"
+                      : "border-gray-200 shadow-sm hover:border-gray-300"
+                  }
                 `}
               >
                 {/* CABEÇALHO */}
@@ -414,6 +464,27 @@ export default function ComparativoPrecosPage() {
                         const ufEscolhida = regiaoSelecionada[keyOferta];
                         const precisaSelecionarUF = (oferta.regioes?.length || 0) > 1 && !ufEscolhida;
 
+                        // ✅ UF atual para efeitos de preço original dinâmico
+                        const ufAtual =
+                          regiaoSelecionada[keyOferta] ||
+                          (oferta.regioes?.length === 1 ? oferta.regioes?.[0]?.uf : "") ||
+                          "";
+
+                        const regSelecionada = oferta.regioes?.find((r) => r.uf === ufAtual);
+
+                        // ✅ Preço original dinâmico (por UF selecionada)
+                        // prioridade: preço_original da UF selecionada -> preço_original geral da oferta
+                        const precoOriginalDinamico =
+                          (regSelecionada?.preco_original ?? oferta.preco_original) || 0;
+
+                        // ✅ Exibe desconto somente se houver original (UF ou geral) maior que o preço atual correspondente
+                        const deveMostrarOriginal =
+                          !!(regSelecionada?.preco_original || oferta.preco_original) && precoOriginalDinamico > 0;
+
+                        // ✅ ES (somente ES): se existir na lista de regiões, exibe o box de cálculo
+                        const regES = oferta.regioes?.find((r) => (r.uf || "").toUpperCase() === "ES");
+                        const calcES = regES ? calcTributosES(regES.preco) : null;
+
                         return (
                           <div
                             key={idx}
@@ -460,10 +531,7 @@ export default function ComparativoPrecosPage() {
                                       ((oferta.regioes?.length || 0) === 1 && (!ufEscolhida || ufEscolhida === ""));
 
                                     return (
-                                      <label
-                                        key={reg.uf}
-                                        className="flex justify-between items-center text-xs cursor-pointer select-none"
-                                      >
+                                      <label key={reg.uf} className="flex justify-between items-center text-xs cursor-pointer select-none">
                                         <div className="flex items-center gap-2">
                                           <input
                                             type="radio"
@@ -486,10 +554,7 @@ export default function ComparativoPrecosPage() {
                                           <div className="text-right">
                                             {reg.preco_original && (
                                               <span className="block text-[8px] text-gray-400 line-through mr-1">
-                                                {new Intl.NumberFormat("pt-BR", {
-                                                  style: "currency",
-                                                  currency: "BRL",
-                                                }).format(reg.preco_original)}
+                                                {formatBRL(reg.preco_original)}
                                               </span>
                                             )}
                                             <span className={`font-semibold ${isWinner ? "text-emerald-700" : "text-gray-800"}`}>
@@ -507,6 +572,49 @@ export default function ComparativoPrecosPage() {
                                     Selecione a UF para adicionar ao carrinho.
                                   </p>
                                 )}
+
+                                {/* ✅ BOX ES (somente ES) - EXIBE APENAS OS CAMPOS PEDIDOS */}
+                                {regES && calcES && (
+                                  <div className="mt-3 bg-white border border-indigo-100 rounded-lg p-3">
+                                    <div className="text-[10px] font-bold text-indigo-700 uppercase tracking-wide mb-2">
+                                      ES — Cálculo Tributário
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2 text-[12px]">
+                                      <div className="bg-gray-50 rounded p-2 border border-gray-100">
+                                        <div className="text-[10px] text-gray-500 font-bold uppercase">(AGREGADO) MVA</div>
+                                        <div className="font-semibold text-gray-800">{formatPercent(calcES.agregadoMva)}</div>
+                                      </div>
+
+                                      <div className="bg-gray-50 rounded p-2 border border-gray-100">
+                                        <div className="text-[10px] text-gray-500 font-bold uppercase">MVA (R$)</div>
+                                        <div className="font-semibold text-gray-800">{formatBRL(calcES.mva)}</div>
+                                      </div>
+
+                                      <div className="bg-gray-50 rounded p-2 border border-gray-100">
+                                        <div className="text-[10px] text-gray-500 font-bold uppercase">BC ICMS ST</div>
+                                        <div className="font-semibold text-gray-800">{formatBRL(calcES.bcIcmsSt)}</div>
+                                      </div>
+
+                                      <div className="bg-gray-50 rounded p-2 border border-gray-100">
+                                        <div className="text-[10px] text-gray-500 font-bold uppercase">ICMS ST + FCP</div>
+                                        <div className="font-semibold text-gray-800">{formatBRL(calcES.icmsStMaisFcp)}</div>
+                                      </div>
+
+                                      <div className="col-span-2 bg-indigo-50 rounded p-2 border border-indigo-100">
+                                        <div className="text-[10px] text-indigo-700 font-bold uppercase">
+                                          CUSTO MERCADORIA (ES)
+                                        </div>
+                                        <div className="text-lg font-extrabold text-indigo-700">
+                                          {formatBRL(calcES.custoMercadoria)}
+                                        </div>
+                                        <div className="mt-1 text-[10px] text-indigo-700/80">
+                                          Fórmula: CUSTO ES + (ICMS ST + FCP)
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             )}
 
@@ -520,15 +628,17 @@ export default function ComparativoPrecosPage() {
                                 </div>
 
                                 <div className="text-right">
-                                  {oferta.teve_desconto && (
+                                  {/* ✅ Desconto: preço original dinâmico por UF selecionada */}
+                                  {deveMostrarOriginal && (
                                     <div className="flex flex-col items-end mb-1">
-                                      <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">
-                                        4% OFF
-                                      </span>
+                                      {oferta.teve_desconto && (
+                                        <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">
+                                          4% OFF
+                                        </span>
+                                      )}
+
                                       <span className="text-xs text-gray-400 line-through decoration-gray-400">
-                                        {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-                                          oferta.preco_original || 0
-                                        )}
+                                        {formatBRL(precoOriginalDinamico)}
                                       </span>
                                     </div>
                                   )}
@@ -539,7 +649,7 @@ export default function ComparativoPrecosPage() {
                                 </div>
                               </div>
 
-                              {/* BOTÃO ADICIONAR AO CARRINHO (salva UF + preço final da UF) */}
+                              {/* BOTÃO ADICIONAR AO CARRINHO */}
                               <button
                                 disabled={precisaSelecionarUF}
                                 onClick={(e) => {
@@ -552,7 +662,6 @@ export default function ComparativoPrecosPage() {
 
                                   const regObj = oferta.regioes?.find((r) => r.uf === ufFinal);
                                   const precoFinal = regObj?.preco ?? oferta.preco;
-
                                   const precoOriginalFinal = regObj?.preco_original ?? oferta.preco_original;
 
                                   addToCart({
@@ -563,10 +672,8 @@ export default function ComparativoPrecosPage() {
                                     fornecedor: oferta.fornecedor,
                                     preco: precoFinal,
                                     quantidade: 1,
-
                                     uf: ufFinal || undefined,
                                     origem: regObj ? "REGIAO" : "OFERTA_GERAL",
-
                                     teve_desconto: !!(regObj?.preco_original || oferta.preco_original),
                                     preco_original: precoOriginalFinal,
                                   });
