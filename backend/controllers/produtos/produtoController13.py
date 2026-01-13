@@ -1,4 +1,3 @@
-
 import asyncio
 import re
 from datetime import datetime
@@ -47,6 +46,65 @@ def preparar_dados_finais(lista_itens):
         "total_itens": len(lista_itens),
         "itens": lista_itens,
     }
+
+
+# ===================== NOVO: TRATAMENTO MODAL SWEETALERT2 ===================== #
+async def fechar_modal_sem_resultados(page) -> bool:
+    """
+    Fecha o modal SweetAlert2 quando a busca não retorna resultados.
+    Retorna True se encontrou e fechou o modal, False caso contrário.
+    """
+    popup = page.locator(".swal2-popup.swal2-modal")
+    ok_btn = page.locator("button.swal2-confirm.swal2-styled")
+
+    try:
+        # tenta detectar o popup rapidamente
+        await popup.wait_for(state="visible", timeout=600)
+    except Exception:
+        return False
+
+    # Se o popup apareceu, garante que é o "Aviso" e fecha
+    try:
+        titulo = ""
+        msg = ""
+
+        try:
+            titulo = (await page.locator("#swal2-title").inner_text()).strip()
+        except Exception:
+            pass
+
+        try:
+            msg = (await page.locator("#swal2-html-container").inner_text()).strip()
+        except Exception:
+            pass
+
+        # clica no OK
+        try:
+            await ok_btn.click(timeout=3000)
+        except Exception:
+            # fallback: força click via JS se necessário
+            try:
+                await page.evaluate(
+                    """() => {
+                        const btn = document.querySelector('button.swal2-confirm.swal2-styled');
+                        if (btn) btn.click();
+                    }"""
+                )
+            except Exception:
+                pass
+
+        # espera o popup sumir
+        try:
+            await popup.wait_for(state="hidden", timeout=5000)
+        except Exception:
+            pass
+
+        print(f"⚠️ Modal SweetAlert fechado. Título: '{titulo}' | Msg: '{msg}'")
+        return True
+
+    except Exception as e:
+        print(f"⚠️ Erro ao tratar modal SweetAlert2: {e}")
+        return True
 
 
 # ===================== EXTRAÇÃO DE DADOS ===================== #
@@ -204,15 +262,26 @@ async def processar_lista_produtos_sequencial_sky(page, lista_produtos):
             await campo.type(codigo, delay=100)
             await page.keyboard.press("Enter")
 
-            # ===== CORREÇÃO: NÃO PASSAR COROUTINES DIRETO NO asyncio.wait =====
+            # ===== ESPERA: produto OU "Nenhum registro" OU modal SweetAlert2 =====
             t1 = asyncio.create_task(page.wait_for_selector(".bx_produto", timeout=7000))
             t2 = asyncio.create_task(page.wait_for_selector("text=Nenhum registro", timeout=7000))
+            t3 = asyncio.create_task(page.wait_for_selector(".swal2-popup.swal2-modal", timeout=7000))
 
-            done, pending = await asyncio.wait({t1, t2}, return_when=asyncio.FIRST_COMPLETED)
+            done, pending = await asyncio.wait({t1, t2, t3}, return_when=asyncio.FIRST_COMPLETED)
 
             for t in pending:
                 t.cancel()
             await asyncio.gather(*pending, return_exceptions=True)
+
+            # Se o modal apareceu, fecha e pula extração
+            if t3 in done:
+                fechou = await fechar_modal_sem_resultados(page)
+                if fechou:
+                    print("⚠️ Busca sem resultados (modal). Pulando este item.")
+                    continue
+
+            # Se não foi modal, ainda assim tenta fechar caso apareça um pouco depois
+            await fechar_modal_sem_resultados(page)
 
             await asyncio.sleep(1.0)
 
@@ -226,6 +295,12 @@ async def processar_lista_produtos_sequencial_sky(page, lista_produtos):
 
         except Exception as e:
             print(f"❌ Falha no loop Sky ({codigo}): {e}")
+            try:
+                # tenta fechar modal se ele travou o fluxo
+                await fechar_modal_sem_resultados(page)
+            except Exception:
+                pass
+
             try:
                 await page.goto("https://cliente.skypecas.com.br/", wait_until="networkidle")
             except Exception:
@@ -252,4 +327,3 @@ async def processar_lista_produtos_sequencial_sky(page, lista_produtos):
                 print("ℹ️ Salvamento de banco pulado (módulo não importado).")
 
     return itens_extraidos
-
