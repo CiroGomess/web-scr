@@ -2,13 +2,12 @@ import asyncio
 import random
 from playwright.async_api import async_playwright
 
-# ===================== CONFIG DPK ===================== #
-LOGIN_URL_DPK = "https://www.dpk.com.br/#/login"
-# URL de destino após o login
-HOME_URL_DPK = "https://www.dpk.com.br/#/" 
+# ===================== CONFIG SKY (PELLEGRINO) ===================== #
+LOGIN_URL_SKY = "https://compreonline.pellegrino.com.br/Account/Login/?ReturnUrl=%2F"
+HOME_URL_SKY = "https://compreonline.pellegrino.com.br/"
 
-USUARIO_DPK = "compras2.autopecasvieira@gmail.com"
-SENHA_DPK = "1186Km71*"
+USUARIO_SKY = "autopecasvieira@gmail.com"
+SENHA_SKY = "1186km71"
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -28,8 +27,8 @@ async def human_type(page, selector, text):
     except Exception as e:
         print(f"⚠️ Erro ao digitar em {selector}: {e}")
 
-async def login_dpk_bypass(p):
-    print("\n🔐 Iniciando LOGIN na DPK (Modo Stealth)...")
+async def login_sky_bypass(p):
+    print("\n🔐 Iniciando LOGIN na SKY/PELLEGRINO (Modo Stealth)...")
 
     args = [
         "--disable-blink-features=AutomationControlled",
@@ -52,7 +51,7 @@ async def login_dpk_bypass(p):
         java_script_enabled=True
     )
 
-    # Bypass manual do navigator.webdriver
+    # Bypass manual
     await context.add_init_script("""
         Object.defineProperty(navigator, 'webdriver', {
             get: () => undefined
@@ -62,62 +61,62 @@ async def login_dpk_bypass(p):
     page = await context.new_page()
 
     try:
-        print("🌍 Acessando página da DPK...")
-        await page.goto(LOGIN_URL_DPK, wait_until="networkidle", timeout=60000)
+        print("🌍 Acessando página da Pellegrino...")
+        await page.goto(LOGIN_URL_SKY, wait_until="domcontentloaded", timeout=60000)
         
-        # Pausa para o Angular carregar
-        await asyncio.sleep(random.uniform(4, 6))
+        await asyncio.sleep(random.uniform(2, 4))
 
-        # --- PREENCHER EMAIL ---
-        print("👤 Digitando e-mail...")
-        seletor_email = "input[formcontrolname='userPrincipalName']"
-        await page.wait_for_selector(seletor_email, state="visible", timeout=20000)
-        await human_type(page, seletor_email, USUARIO_DPK)
+        # --- PREENCHER USUÁRIO ---
+        print("👤 Digitando usuário...")
+        await page.wait_for_selector("#username", state="visible")
+        await human_type(page, "#username", USUARIO_SKY)
         
-        await asyncio.sleep(random.uniform(1, 2))
+        await asyncio.sleep(1)
 
         # --- PREENCHER SENHA ---
         print("🔑 Digitando senha...")
-        seletor_senha = "input[formcontrolname='password']"
-        await human_type(page, seletor_senha, SENHA_DPK)
+        await human_type(page, "#password", SENHA_SKY)
         
-        await asyncio.sleep(random.uniform(1, 2))
+        await asyncio.sleep(1)
 
         # --- CLICAR ENTRAR ---
         print("🚀 Clicando em Entrar...")
-        btn_entrar = page.locator("button[type='submit']:has-text('Entrar')")
+        submit_btn = page.locator("#kt_login_signin_submit")
         
-        if await btn_entrar.is_visible():
-            box = await btn_entrar.bounding_box()
+        if await submit_btn.is_visible():
+            box = await submit_btn.bounding_box()
             if box:
                 await page.mouse.move(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
                 await asyncio.sleep(0.5)
-            await btn_entrar.click()
+            await submit_btn.click()
         else:
-            print("⚠️ Botão de entrar não encontrado, tentando Enter...")
             await page.keyboard.press("Enter")
 
-        # --- AGUARDAR CARREGAMENTO PÓS-LOGIN ---
-        print("⏳ Aguardando processamento e redirecionamento...")
+        # --- AGUARDAR CARREGAMENTO ---
+        print("⏳ Aguardando processamento do login...")
         await page.wait_for_load_state("networkidle")
         
-        # Espera para garantir que a URL mude
-        await asyncio.sleep(10) 
+        # =======================================================
+        # PASSO EXTRA: FECHAR O MODAL (TUTORIAL)
+        # =======================================================
+        print("⏱️ Esperando 3 segundos fixos...")
+        await asyncio.sleep(3) 
+        
+        print("❎ Clicando no botão X (.driver-popover-close-btn)...")
+        try:
+            # Tenta clicar no botão. Timeout de 3s para garantir.
+            await page.click(".driver-popover-close-btn", timeout=3000)
+            print("✔ Modal fechado com sucesso!")
+        except:
+            print("ℹ️ O botão não apareceu ou já sumiu.")
+        # =======================================================
 
-        # --- VALIDAÇÃO DA URL ---
-        url_atual = page.url
-        print(f"🔎 URL Final: {url_atual}")
-
-        # Verifica se estamos na raiz (/#/) ou se saiu da tela de login
-        if "login" not in url_atual and ("/#/" in url_atual or url_atual == HOME_URL_DPK):
-             print(f"✅ Login DPK finalizado com sucesso! (Home detectada)")
-        else:
-             print("⚠️ Aviso: A URL não parece ser a Home padrão. Verifique se o login foi concluído.")
+        print(f"✅ Login SKY finalizado! URL Atual: {page.url}")
         
         return browser, context, page
 
     except Exception as e:
-        print(f"❌ Erro na DPK: {e}")
+        print(f"❌ Erro na Sky/Pellegrino: {e}")
         if 'browser' in locals():
             await browser.close()
         return None, None, None
