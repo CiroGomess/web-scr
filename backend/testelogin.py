@@ -1,17 +1,23 @@
 import asyncio
 from playwright.async_api import async_playwright
-# Troque aqui para testar o Fornecedor 3
-from controllers.fornecedores.Fornecedor13Controller import login_skypecas
+
+# CORREÇÃO: Importando a função correta (login_laguna_bypass)
+from controllers.fornecedores.Fornecedor12Controller import login_takao_bypass
 
 async def testar_acesso():
-    print("🚀 Iniciando teste de login FORNECEDOR 3...")
+    print("🚀 Iniciando teste de login FORNECEDOR 6 (Laguna - Bypass)...")
+    
     async with async_playwright() as p:
-        browser, context, page = await login_skypecas(p)
+        # CORREÇÃO: Chamando a função correta
+        browser, context, page = await login_takao_bypass(p)
         
         if page:
             print(f"✅ Sucesso! Logado em: {page.url}")
-            await asyncio.sleep(5)
+            # Deixei um tempo maior para você conferir visualmente se o login funcionou
+            await asyncio.sleep(10)
             await browser.close()
+        else:
+            print("❌ O login retornou vazio (falha).")
 
 if __name__ == "__main__":
-    asyncio.run(testar_acesso())  
+    asyncio.run(testar_acesso())

@@ -1,71 +1,139 @@
 import asyncio
 import random
+from playwright.async_api import async_playwright
 
-# ===================== CONFIG ===================== #
+# ===================== CONFIG MATRIZ (Fornecedor 10) ===================== #
 LOGIN_URL_MATRIZ = "http://suportematriz.ddns.net:5006"
-HOME_URL_MATRIZ = "http://suportematriz.ddns.net:5006/home" # Ajuste se a home for diferente
+HOME_URL_MATRIZ = "http://suportematriz.ddns.net:5006/home" 
 
-# O campo pede e-mail, mas você forneceu o CNPJ. 
-# O Playwright preencherá o campo 'email' com este número.
-USUARIO_MATRIZ = "43053953000120" 
-SENHA_MATRIZ = "VIEIRA"
+USUARIO_MATRIZ = "fiscal.autopecasvieira@gmail.com"
+SENHA_MATRIZ = "123456"
 
 USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36"
 ]
 
+async def human_type(page, selector, text):
+    """Simula uma digitação humana"""
+    try:
+        box = await page.locator(selector).bounding_box()
+        if box:
+            await page.mouse.move(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
+        
+        await page.click(selector)
+        await page.type(selector, text, delay=random.randint(50, 150))
+    except Exception as e:
+        print(f"⚠️ Erro ao digitar em {selector}: {e}")
 
-HEADLESS = True 
+async def login_matriz_bypass(p):
+    print("\n🔐 Iniciando LOGIN na MATRIZ (Modo Stealth Manual)...")
 
-# ===================== LOGIN MATRIZ ===================== #
-
-async def login_matriz(p):
-    print("\n🔐 Iniciando LOGIN no fornecedor MATRIZ...")
+    args = [
+        "--disable-blink-features=AutomationControlled",
+        "--start-maximized",
+        "--no-sandbox",
+        "--disable-infobars"
+    ]
 
     browser = await p.chromium.launch(
-        headless=HEADLESS,
-        slow_mo=300
+        headless=False, 
+        args=args,
+        ignore_default_args=["--enable-automation"] 
     )
 
     context = await browser.new_context(
         user_agent=random.choice(USER_AGENTS),
+        viewport={'width': 1366, 'height': 768},
         locale="pt-BR",
-        viewport={'width': 1366, 'height': 768}
+        timezone_id="America/Sao_Paulo",
+        java_script_enabled=True
     )
+
+    await context.add_init_script("""
+        Object.defineProperty(navigator, 'webdriver', {
+            get: () => undefined
+        });
+    """)
 
     page = await context.new_page()
 
     try:
-        # 1. Acessar a página de Login
-        await page.goto(LOGIN_URL_MATRIZ, wait_until="networkidle", timeout=60000)
-
-        # 2. Preencher E-mail (id="email")
-        await page.wait_for_selector("#email", state="visible")
-        await page.fill("#email", USUARIO_MATRIZ)
-        print("👤 Usuário/CNPJ preenchido.")
-
-        # 3. Preencher Senha (id="password")
-        await page.fill("#password", SENHA_MATRIZ)
-        print("🔑 Senha preenchida.")
-
-        # 4. Clicar no botão Entrar (id="loginBtn")
-        print("🚀 Clicando no botão Entrar...")
+        print("🌍 Acessando página da Matriz...")
+        await page.goto(LOGIN_URL_MATRIZ, wait_until="domcontentloaded", timeout=60000)
         
-        # Como o botão pode ter animações de 'loading', clicamos e aguardamos a navegação
-        await page.click("#loginBtn")
+        await asyncio.sleep(random.uniform(2, 4))
 
-        # 5. Aguardar carregamento do painel principal
+        # --- PREENCHER USUÁRIO ---
+        print("👤 Digitando usuário...")
+        await page.wait_for_selector("#email", state="visible")
+        await human_type(page, "#email", USUARIO_MATRIZ)
+        await asyncio.sleep(1)
+
+        # --- PREENCHER SENHA ---
+        print("🔑 Digitando senha...")
+        await human_type(page, "#password", SENHA_MATRIZ)
+        await asyncio.sleep(1)
+
+        # --- CLICAR ENTRAR ---
+        print("🚀 Clicando em ENTRAR...")
+        submit_btn = page.locator("#loginBtn")
+        
+        if await submit_btn.count() > 0:
+            await submit_btn.click()
+        else:
+            await page.keyboard.press("Enter")
+
+        # Aguarda carregamento inicial
+        print("⏳ Aguardando processamento do login...")
         await page.wait_for_load_state("networkidle")
+
+        # =======================================================
+        # PASSO 1: CONFIRMAR SÃO GONÇALO
+        # =======================================================
+        print("⏱️ Esperando 3 segundos para clicar em 'SUPORTE SÃO GONÇALO'...")
         await asyncio.sleep(3)
+        
+        try:
+            # Botão do SweetAlert
+            btn_suporte = page.locator(".swal2-confirm")
+            if await btn_suporte.is_visible(timeout=3000):
+                await btn_suporte.click()
+                print("✔ Botão 'SUPORTE SÃO GONÇALO' clicado!")
+            else:
+                print("ℹ️ Botão de suporte não apareceu.")
+        except Exception as e:
+            print(f"⚠️ Erro ao clicar no suporte: {e}")
 
-        # Verificação: Se ainda houver o campo de e-mail, o login falhou
+        # =======================================================
+        # PASSO 2: CONFIRMAR "ENTENDI TUDO"
+        # =======================================================
+        print("⏱️ Esperando mais 4 segundos para clicar em 'Entendi Tudo'...")
+        await asyncio.sleep(4)
+
+        try:
+            # Botão de atualização
+            btn_entendi = page.locator(".btn-atualizacao-entendi")
+            if await btn_entendi.is_visible(timeout=3000):
+                await btn_entendi.click()
+                print("✔ Botão 'Entendi Tudo' clicado!")
+            else:
+                print("ℹ️ Botão 'Entendi Tudo' não apareceu.")
+        except Exception as e:
+            print(f"⚠️ Erro ao clicar em entendi: {e}")
+        # =======================================================
+
+        # Verificação final
         if await page.locator("#email").count() > 0:
-            print("❌ ERRO: Login Matriz falhou! Verifique as credenciais.")
-            return None, None, None
-
-        print(f"✅ Login Matriz realizado com sucesso! URL: {page.url}")
+             print("❌ O login parece ter falhado (campo de email ainda visível).")
+        else:
+             print(f"✅ Login MATRIZ finalizado! URL Atual: {page.url}")
+        
         return browser, context, page
 
     except Exception as e:
-        print(f"❌ Erro inesperado no login da Matriz: {e}")
+        print(f"❌ Erro na Matriz: {e}")
+        if 'browser' in locals():
+            await browser.close()
         return None, None, None
