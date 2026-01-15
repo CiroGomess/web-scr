@@ -3,7 +3,7 @@ from playwright.async_api import async_playwright
 
 # --- IMPORTS ---
 # Login do Fornecedor 6 (Laguna)
-from controllers.fornecedores.Fornecedor6Controller import login_laguna_bypass
+from controllers.fornecedores.Fornecedor8Controller import login_sama_bypass
 
 # Controller de Produtos 6 (Laguna) - NOVO
 from controllers.produtos.produtoController6 import processar_lista_produtos_sequencial6
@@ -14,7 +14,7 @@ async def main():
     async with async_playwright() as p:
         
         # 1. Login (Com Bypass Cloudflare)
-        browser, context, page = await login_laguna_bypass(p)
+        browser, context, page = await login_sama_bypass(p)
 
         if page:
             print("\n--- ✅ Login OK. Iniciando Pesquisa de Produto ---")

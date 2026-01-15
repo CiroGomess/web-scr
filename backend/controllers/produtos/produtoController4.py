@@ -216,7 +216,7 @@ def preparar_dados_finais(lista_itens):
     return {
         "data_processamento_lote": agora.strftime("%d/%m/%Y %H:%M:%S"),
         "data_obj": agora,
-        "fornecedror": "Fornecedor 4 (GB)",
+        "fornecedror": "G&B",
         "total_itens": len(lista_itens),
         "itens": lista_itens
     }
