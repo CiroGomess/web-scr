@@ -2,30 +2,30 @@ import asyncio
 from playwright.async_api import async_playwright
 
 # --- IMPORTS ---
-# Login do Fornecedor 11 (DPK)
-from controllers.fornecedores.Fornecedor11Controller import login_dpk_bypass
+# Login do Fornecedor 12 (Takao)
+from controllers.fornecedores.Fornecedor12Controller import login_takao_bypass
 
-# Controller de Produtos 11 (DPK) - NOVO
-from controllers.produtos.produtoController11 import processar_lista_produtos_sequencial11
+# Controller de Produtos 12 (Takao) - NOVO
+from controllers.produtos.produtoController12 import processar_lista_produtos_sequencial12
 
 async def main():
-    print("🚀 Iniciando Runner de Teste para Fornecedor 11 (DPK)...")
+    print("🚀 Iniciando Runner de Teste para Fornecedor 12 (Takao)...")
 
     async with async_playwright() as p:
         
         # 1. Login (Com Bypass Cloudflare/Stealth se configurado)
-        browser, context, page = await login_dpk_bypass(p)
+        browser, context, page = await login_takao_bypass(p)
 
         if page:
             print("\n--- ✅ Login OK. Iniciando Pesquisa de Produto ---")
             
-            # 2. Lista de Teste (Código solicitado: 84111)
+            # 2. Lista de Teste (Código solicitado: JSCBR LR 30D)
             lista_teste = [
-                {"codigo": "84111", "quantidade": 2}
+                {"codigo": "JSCBR LR 30D", "quantidade": 2}
             ]
             
-            # 3. Chama a função de processamento CORRETA (Controller 11)
-            resultados = await processar_lista_produtos_sequencial11(page, lista_teste)
+            # 3. Chama a função de processamento CORRETA (Controller 12)
+            resultados = await processar_lista_produtos_sequencial12(page, lista_teste)
             
             # 4. Exibe Resultados no Console
             print("\n--- 📊 Resultado do Teste ---")
