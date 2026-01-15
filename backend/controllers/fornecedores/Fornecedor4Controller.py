@@ -2,7 +2,9 @@ import asyncio
 import random
 
 # ===================== CONFIG ===================== #
-LOGIN_URL_F4 = "https://ecommerce.gb.com.br/#/homeE" 
+LOGIN_URL_F4 = "https://ecommerce.gb.com.br/#/homeE"
+# URL de destino pós-login (Tela de Produtos)
+URL_PRODUTOS_F4 = "https://ecommerce.gb.com.br/#/unit004"
 
 USUARIO_F4 = "43053953000120"
 SENHA_F4 = "@#Compras21975"
@@ -14,18 +16,35 @@ USER_AGENTS = [
 HEADLESS = False 
 
 async def login_fornecedor4(p):
-    print("\n🔐 Iniciando LOGIN no FORNECEDOR 4...")
+    print("\n🔐 Iniciando LOGIN no FORNECEDOR 4 (GB)...")
 
-    browser = await p.chromium.launch(headless=HEADLESS, slow_mo=200)
+    # Adicionei argumentos para evitar detecção simples
+    args = [
+        "--disable-blink-features=AutomationControlled", 
+        "--start-maximized", 
+        "--no-sandbox"
+    ]
+
+    browser = await p.chromium.launch(
+        headless=HEADLESS, 
+        args=args,
+        slow_mo=200,
+        ignore_default_args=["--enable-automation"]
+    )
+    
     context = await browser.new_context(
         user_agent=random.choice(USER_AGENTS),
-        viewport={'width': 1366, 'height': 768}
+        viewport={'width': 1366, 'height': 768},
+        locale="pt-BR"
     )
+
+    # Bypass básico
+    await context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 
     page = await context.new_page()
 
     try:
-        # Acessa a página
+        # Acessa a página de login
         await page.goto(LOGIN_URL_F4, wait_until="networkidle", timeout=60000)
 
         # 1. Preencher Usuário
@@ -38,17 +57,26 @@ async def login_fornecedor4(p):
         print("🔑 Senha preenchida.")
 
         # 3. Clicar no botão ENTRAR
-        # AQUI ESTÁ O TRUQUE: Usamos :has-text("ENTRAR") para ignorar o botão de cadastro
         print("🚀 Clicando no botão ENTRAR...")
-        
-        # O seletor abaixo diz: Procure um link (a) com id btn-logar QUE TENHA o texto 'ENTRAR'
         await page.click("a#btn-logar:has-text('ENTRAR')")
 
         # 4. Aguardar o login processar
+        print("⏳ Aguardando autenticação...")
         await page.wait_for_load_state("networkidle")
-        await asyncio.sleep(20) # Aumentei um pouco para garantir
+        # Diminuí um pouco o tempo pois vamos fazer outra navegação em seguida
+        await asyncio.sleep(10) 
 
-        print(f"✅ Ação de login realizada! URL Atual: {page.url}")
+        # =======================================================
+        # PASSO EXTRA: REDIRECIONAR PARA A TELA DE PRODUTOS
+        # =======================================================
+        print(f"📂 Redirecionando para Produtos ({URL_PRODUTOS_F4})...")
+        await page.goto(URL_PRODUTOS_F4, wait_until="networkidle")
+        
+        # Espera o Vue.js renderizar a tela de produtos
+        await asyncio.sleep(5)
+        # =======================================================
+
+        print(f"✅ Login e Redirecionamento realizados! URL Atual: {page.url}")
         
         return browser, context, page
 
