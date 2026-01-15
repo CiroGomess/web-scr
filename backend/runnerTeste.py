@@ -2,31 +2,30 @@ import asyncio
 from playwright.async_api import async_playwright
 
 # --- IMPORTS ---
-# Login do Fornecedor 6 (Laguna)
-from controllers.fornecedores.Fornecedor8Controller import login_sama_bypass
+# Login do Fornecedor 10 (Matriz)
+from controllers.fornecedores.Fornecedor10Controller import login_matriz_bypass
 
-# Controller de Produtos 6 (Laguna) - NOVO
-from controllers.produtos.produtoController6 import processar_lista_produtos_sequencial6
+# Controller de Produtos 10 (Matriz) - NOVO
+from controllers.produtos.produtoController10 import processar_lista_produtos_sequencial10
 
 async def main():
-    print("🚀 Iniciando Runner de Teste para Fornecedor 6 (Laguna)...")
+    print("🚀 Iniciando Runner de Teste para Fornecedor 10 (Matriz)...")
 
     async with async_playwright() as p:
         
-        # 1. Login (Com Bypass Cloudflare)
-        browser, context, page = await login_sama_bypass(p)
+        # 1. Login (Com Bypass Cloudflare/Stealth se configurado)
+        browser, context, page = await login_matriz_bypass(p)
 
         if page:
             print("\n--- ✅ Login OK. Iniciando Pesquisa de Produto ---")
             
-            # 2. Lista de Teste (Código do exemplo fornecido)
-            # Código: 9430084214 (Bico Injetor Bosch)
+            # 2. Lista de Teste (Código solicitado: 10A1075C)
             lista_teste = [
-                {"codigo": "9430084214", "quantidade": 2}
+                {"codigo": "10A1075C", "quantidade": 2}
             ]
             
-            # 3. Chama a função de processamento CORRETA (Controller 6)
-            resultados = await processar_lista_produtos_sequencial6(page, lista_teste)
+            # 3. Chama a função de processamento CORRETA (Controller 10)
+            resultados = await processar_lista_produtos_sequencial10(page, lista_teste)
             
             # 4. Exibe Resultados no Console
             print("\n--- 📊 Resultado do Teste ---")
@@ -37,6 +36,7 @@ async def main():
                 print(f"Preço Unitário: {item['preco_formatado']}")
                 print(f"Total (x{item['qtdSolicitada']}): {item['valor_total_formatado']}")
                 print(f"Status: {item['status']}")
+                print(f"Estoque: {item['qtdDisponivel']}")
                 print("-" * 30)
             
             print("\n🏁 Teste finalizado. Fechando em 5 segundos...")
