@@ -2,30 +2,33 @@ import asyncio
 from playwright.async_api import async_playwright
 
 # --- IMPORTS ---
-# Login do Fornecedor 14 (Sky/Pellegrino)
-from controllers.fornecedores.Fornecedor14Controller import login_sky_bypass
+# Login do Fornecedor 9 (Solroom)
+from controllers.fornecedores.Fornecedor15Controller import login_riojc_bypass
 
-# Controller de Produtos 14 (Sky/Pellegrino) - NOVO
-from controllers.produtos.produtoController14 import processar_lista_produtos_sequencial14
+# Controller de Produtos 9 (Solroom)
+from controllers.produtos.produtoController15 import processar_lista_produtos_sequencial15
 
 async def main():
-    print("🚀 Iniciando Runner de Teste para Fornecedor 14 (Sky/Pellegrino)...")
+    print("🚀 Iniciando Runner de Teste para Fornecedor 9 (Solroom)...")
 
     async with async_playwright() as p:
         
-        # 1. Login (Com Bypass Cloudflare/Stealth se configurado)
-        browser, context, page = await login_sky_bypass(p)
+        # 1. Login
+        # O login_solroom retorna (browser, context, page)
+        login_data = await login_riojc_bypass(p)
+        browser, context, page = login_data
 
         if page:
             print("\n--- ✅ Login OK. Iniciando Pesquisa de Produto ---")
             
-            # 2. Lista de Teste (Código solicitado: HG 33013)
+            # 2. Lista de Teste (Código do exemplo que você enviou: 3250237)
             lista_teste = [
-                {"codigo": "HG 33013", "quantidade": 2}
+                {"codigo": "R32746", "quantidade": 2}
             ]
             
-            # 3. Chama a função de processamento CORRETA (Controller 14)
-            resultados = await processar_lista_produtos_sequencial14(page, lista_teste)
+            # 3. Chama a função de processamento
+            # IMPORTANTE: Passamos 'login_data' completo para ter acesso ao context
+            resultados = await processar_lista_produtos_sequencial15(login_data, lista_teste)
             
             # 4. Exibe Resultados no Console
             print("\n--- 📊 Resultado do Teste ---")
@@ -34,8 +37,7 @@ async def main():
                 print(f"Código: {item['codigo']}")
                 print(f"Marca: {item['marca']}")
                 print(f"Preço Unitário: {item['preco_formatado']}")
-                print(f"Total (x{item['qtdSolicitada']}): {item['valor_total_formatado']}")
-                print(f"Status: {item['status']}")
+                print(f"Total: {item['valor_total_formatado']}")
                 print(f"Estoque: {item['qtdDisponivel']}")
                 print("-" * 30)
             
