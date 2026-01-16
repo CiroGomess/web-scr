@@ -3,11 +3,11 @@ import json
 from datetime import datetime
 from playwright.async_api import async_playwright
 
-# 1. Importa o Login específico (Fornecedor 8 - SAMA)
-from controllers.fornecedores.Fornecedor8Controller import login_sama_bypass
+# 1) Login (Fornecedor 10 - Suporte Matriz)
+from controllers.fornecedores.Fornecedor10Controller import login_matriz_bypass
 
-# 2. Importa a automação de carrinho (SAMA)
-from controllers.addCarrinho.samaautopecas import processar_lista_produtos_sama
+# 2) Automação carrinho (Suporte Matriz)
+from controllers.addCarrinho.suportematriz import processar_lista_produtos_suportematriz
 
 
 def log(mensagem):
@@ -19,21 +19,21 @@ async def main():
     # Dados do teste
     lista_itens = [
         {
-            "codigo": "GP30120",
-            "quantidade": 3
+            "codigo": "FLUDS282DU1",
+            "quantidade": 10
         }
     ]
 
-    log("=== INICIANDO TESTE MANUAL (SAMA / FORNECEDOR 8) ===")
+    log("=== INICIANDO TESTE MANUAL (SUPORTE MATRIZ / FORNECEDOR 10) ===")
 
     async with async_playwright() as p:
         # ---------------------------------------------------------
         # PASSO 1: LOGIN
         # ---------------------------------------------------------
-        log("1. Executando Login (Fornecedor8Controller)...")
+        log("1. Executando Login (Fornecedor10Controller)...")
 
         try:
-            browser, context, page = await login_sama_bypass(p)
+            browser, context, page = await login_matriz_bypass(p)
         except Exception as e:
             log(f"❌ Erro fatal no login: {e}")
             return
@@ -47,13 +47,13 @@ async def main():
         log("✅ Login realizado com sucesso! Página ativa.")
 
         # ---------------------------------------------------------
-        # PASSO 2: ADICIONAR AO CARRINHO (SETA QTD + CLICA NO BOTÃO)
+        # PASSO 2: ADICIONAR AO CARRINHO (Card -> Add -> Modal quantidade -> Confirmar)
         # ---------------------------------------------------------
-        log("2. Iniciando processamento do carrinho (SAMA)...")
+        log("2. Iniciando processamento do carrinho (Suporte Matriz)...")
         log(f"   Produto alvo: {lista_itens[0]['codigo']}")
 
         try:
-            resultado = await processar_lista_produtos_sama(page, lista_itens)
+            resultado = await processar_lista_produtos_suportematriz(page, lista_itens)
         except Exception as e:
             log(f"❌ Erro durante processamento do carrinho: {e}")
             resultado = None
