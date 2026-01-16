@@ -4,15 +4,19 @@ from playwright.async_api import async_playwright
 
 # LOGINs
 from controllers.fornecedores.Fornecedor1Controller import login as login_portalcomdip
-from controllers.fornecedores.Fornecedor7Controller import login_rmp
 from controllers.fornecedores.Fornecedor2Controller import login_roles
+from controllers.fornecedores.Fornecedor3Controller import login_acaraujo
+from controllers.fornecedores.Fornecedor4Controller import login_fornecedor4  # <- NOVO (GB)
 from controllers.fornecedores.Fornecedor5Controller import login_jahu
+from controllers.fornecedores.Fornecedor7Controller import login_rmp
 from controllers.fornecedores.Fornecedor13Controller import login_skypecas
 
-# Ações carrinho
+# Ações carrinho/pedido
 from controllers.addCarrinho.portalcomdip import adicionar_itens_ao_carrinho_portalcomdip
 from controllers.addCarrinho.rmp import adicionar_itens_ao_carrinho_rmp
 from controllers.addCarrinho.roles import processar_lista_produtos_roles
+from controllers.addCarrinho.acaraujo import processar_lista_produtos_acaraujo
+from controllers.addCarrinho.gb import processar_lista_produtos_gb  # <- NOVO (GB)
 from controllers.addCarrinho.jahu import processar_lista_produtos_jahu
 from controllers.addCarrinho.skypecas import processar_lista_produtos_skypecas
 
@@ -29,6 +33,14 @@ FORNECEDORES_CARRINHO = {
     "roles": {
         "login": login_roles,
         "add_to_cart": processar_lista_produtos_roles,
+    },
+    "acaraujo": {
+        "login": login_acaraujo,
+        "add_to_cart": processar_lista_produtos_acaraujo,
+    },
+    "gb": {  # <- NOVO
+        "login": login_fornecedor4,
+        "add_to_cart": processar_lista_produtos_gb,
     },
     "jahu": {
         "login": login_jahu,
@@ -56,6 +68,25 @@ ALIASES = {
     "compreonline.roles.com.br": "roles",
     "roles": "roles",
 
+    # ACARAUJO (Fornecedor 3)
+    "fornecedor3": "acaraujo",
+    "fornecedor 3 (acaraujo)": "acaraujo",
+    "acaraujo": "acaraujo",
+    "a caraujo": "acaraujo",
+    "portal.acaraujo.com.br": "acaraujo",
+    "https://portal.acaraujo.com.br": "acaraujo",
+    "https://portal.acaraujo.com.br/": "acaraujo",
+
+    # GB (Fornecedor 4)  <- NOVO
+    "fornecedor4": "gb",
+    "fornecedor 4 (gb)": "gb",
+    "gb": "gb",
+    "g&b": "gb",
+    "g e b": "gb",
+    "ecommerce.gb.com.br": "gb",
+    "https://ecommerce.gb.com.br": "gb",
+    "https://ecommerce.gb.com.br/": "gb",
+
     # JAHU
     "fornecedor5": "jahu",
     "fornecedor 5 (jahu)": "jahu",
@@ -67,8 +98,8 @@ ALIASES = {
     "fornecedor13": "skypecas",
     "fornecedor 13 (skypecas)": "skypecas",
     "skypecas": "skypecas",
-    "sky peças": "skypecas",          # <- IMPORTANTE para o payload: "Sky Peças"
-    "sky pecas": "skypecas",          # <- sem cedilha
+    "sky peças": "skypecas",
+    "sky pecas": "skypecas",
     "cliente.skypecas.com.br": "skypecas",
     "https://cliente.skypecas.com.br": "skypecas",
     "https://cliente.skypecas.com.br/": "skypecas",
