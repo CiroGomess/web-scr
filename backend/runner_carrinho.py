@@ -6,8 +6,9 @@ from playwright.async_api import async_playwright
 from controllers.fornecedores.Fornecedor1Controller import login as login_portalcomdip
 from controllers.fornecedores.Fornecedor2Controller import login_roles
 from controllers.fornecedores.Fornecedor3Controller import login_acaraujo
-from controllers.fornecedores.Fornecedor4Controller import login_fornecedor4  # <- NOVO (GB)
+from controllers.fornecedores.Fornecedor4Controller import login_fornecedor4  # GB
 from controllers.fornecedores.Fornecedor5Controller import login_jahu
+from controllers.fornecedores.Fornecedor6Controller import login_laguna_bypass  # LAGUNA
 from controllers.fornecedores.Fornecedor7Controller import login_rmp
 from controllers.fornecedores.Fornecedor13Controller import login_skypecas
 
@@ -16,7 +17,8 @@ from controllers.addCarrinho.portalcomdip import adicionar_itens_ao_carrinho_por
 from controllers.addCarrinho.rmp import adicionar_itens_ao_carrinho_rmp
 from controllers.addCarrinho.roles import processar_lista_produtos_roles
 from controllers.addCarrinho.acaraujo import processar_lista_produtos_acaraujo
-from controllers.addCarrinho.gb import processar_lista_produtos_gb  # <- NOVO (GB)
+from controllers.addCarrinho.gb import processar_lista_produtos_gb
+from controllers.addCarrinho.lagunaautopecas import processar_lista_produtos_laguna
 from controllers.addCarrinho.jahu import processar_lista_produtos_jahu
 from controllers.addCarrinho.skypecas import processar_lista_produtos_skypecas
 
@@ -38,9 +40,13 @@ FORNECEDORES_CARRINHO = {
         "login": login_acaraujo,
         "add_to_cart": processar_lista_produtos_acaraujo,
     },
-    "gb": {  # <- NOVO
+    "gb": {
         "login": login_fornecedor4,
         "add_to_cart": processar_lista_produtos_gb,
+    },
+    "laguna": {  # <- NOVO (Fornecedor 6)
+        "login": login_laguna_bypass,
+        "add_to_cart": processar_lista_produtos_laguna,
     },
     "jahu": {
         "login": login_jahu,
@@ -77,7 +83,7 @@ ALIASES = {
     "https://portal.acaraujo.com.br": "acaraujo",
     "https://portal.acaraujo.com.br/": "acaraujo",
 
-    # GB (Fornecedor 4)  <- NOVO
+    # GB (Fornecedor 4)
     "fornecedor4": "gb",
     "fornecedor 4 (gb)": "gb",
     "gb": "gb",
@@ -86,6 +92,16 @@ ALIASES = {
     "ecommerce.gb.com.br": "gb",
     "https://ecommerce.gb.com.br": "gb",
     "https://ecommerce.gb.com.br/": "gb",
+
+    # LAGUNA (Fornecedor 6)  <- NOVO
+    "fornecedor6": "laguna",
+    "fornecedor 6 (laguna)": "laguna",
+    "laguna": "laguna",
+    "laguna autopecas": "laguna",
+    "laguna autopeças": "laguna",
+    "compreonline.lagunaautopecas.com.br": "laguna",
+    "https://compreonline.lagunaautopecas.com.br": "laguna",
+    "https://compreonline.lagunaautopecas.com.br/": "laguna",
 
     # JAHU
     "fornecedor5": "jahu",

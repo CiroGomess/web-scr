@@ -3,11 +3,11 @@ import json
 from datetime import datetime
 from playwright.async_api import async_playwright
 
-# 1. Importa o Login específico (Fornecedor 4 - GB)
-from controllers.fornecedores.Fornecedor4Controller import login_fornecedor4
+# 1. Importa o Login específico (Fornecedor 8 - SAMA)
+from controllers.fornecedores.Fornecedor8Controller import login_sama_bypass
 
-# 2. Importa a automação de pedido (GB)
-from controllers.addCarrinho.gb import processar_lista_produtos_gb
+# 2. Importa a automação de carrinho (SAMA)
+from controllers.addCarrinho.samaautopecas import processar_lista_produtos_sama
 
 
 def log(mensagem):
@@ -16,25 +16,24 @@ def log(mensagem):
 
 
 async def main():
-    # Dados do teste (exemplo)
+    # Dados do teste
     lista_itens = [
         {
-            "codigo": "34372",
+            "codigo": "GP30120",
             "quantidade": 3
         }
     ]
 
-    log("=== INICIANDO TESTE MANUAL (GB / FORNECEDOR 4) ===")
+    log("=== INICIANDO TESTE MANUAL (SAMA / FORNECEDOR 8) ===")
 
     async with async_playwright() as p:
         # ---------------------------------------------------------
         # PASSO 1: LOGIN
         # ---------------------------------------------------------
-        log("1. Executando Login (Fornecedor4Controller)...")
+        log("1. Executando Login (Fornecedor8Controller)...")
 
-        # O controller de login retorna (browser, context, page)
         try:
-            browser, context, page = await login_fornecedor4(p)
+            browser, context, page = await login_sama_bypass(p)
         except Exception as e:
             log(f"❌ Erro fatal no login: {e}")
             return
@@ -48,16 +47,15 @@ async def main():
         log("✅ Login realizado com sucesso! Página ativa.")
 
         # ---------------------------------------------------------
-        # PASSO 2: FAZER PEDIDO (SETA QUANTIDADE)
+        # PASSO 2: ADICIONAR AO CARRINHO (SETA QTD + CLICA NO BOTÃO)
         # ---------------------------------------------------------
-        log("2. Iniciando processamento do pedido (GB)...")
+        log("2. Iniciando processamento do carrinho (SAMA)...")
         log(f"   Produto alvo: {lista_itens[0]['codigo']}")
 
-        # Chama a função do GB passando a página já logada
         try:
-            resultado = await processar_lista_produtos_gb(page, lista_itens)
+            resultado = await processar_lista_produtos_sama(page, lista_itens)
         except Exception as e:
-            log(f"❌ Erro durante processamento do pedido: {e}")
+            log(f"❌ Erro durante processamento do carrinho: {e}")
             resultado = None
 
         # ---------------------------------------------------------
