@@ -3,11 +3,11 @@ import json
 from datetime import datetime
 from playwright.async_api import async_playwright
 
-# 1) Login (Fornecedor 10 - Suporte Matriz)
-from controllers.fornecedores.Fornecedor10Controller import login_matriz_bypass
+# 1) Login (Fornecedor 12 - Takao)
+from controllers.fornecedores.Fornecedor12Controller import login_takao_bypass
 
-# 2) Automação carrinho (Suporte Matriz)
-from controllers.addCarrinho.suportematriz import processar_lista_produtos_suportematriz
+# 2) Automação carrinho (Takao)
+from controllers.addCarrinho.takao import processar_lista_produtos_takao
 
 
 def log(mensagem):
@@ -16,24 +16,20 @@ def log(mensagem):
 
 
 async def main():
-    # Dados do teste
     lista_itens = [
         {
-            "codigo": "FLUDS282DU1",
-            "quantidade": 10
+            "codigo": "JSCBR LR 30D",  # exemplo do seu controller de pesquisa
+            "quantidade": 2
         }
     ]
 
-    log("=== INICIANDO TESTE MANUAL (SUPORTE MATRIZ / FORNECEDOR 10) ===")
+    log("=== INICIANDO TESTE MANUAL (TAKAO / FORNECEDOR 12) ===")
 
     async with async_playwright() as p:
-        # ---------------------------------------------------------
-        # PASSO 1: LOGIN
-        # ---------------------------------------------------------
-        log("1. Executando Login (Fornecedor10Controller)...")
+        log("1. Executando Login (Fornecedor12Controller)...")
 
         try:
-            browser, context, page = await login_matriz_bypass(p)
+            browser, context, page = await login_takao_bypass(p)
         except Exception as e:
             log(f"❌ Erro fatal no login: {e}")
             return
@@ -46,21 +42,15 @@ async def main():
 
         log("✅ Login realizado com sucesso! Página ativa.")
 
-        # ---------------------------------------------------------
-        # PASSO 2: ADICIONAR AO CARRINHO (Card -> Add -> Modal quantidade -> Confirmar)
-        # ---------------------------------------------------------
-        log("2. Iniciando processamento do carrinho (Suporte Matriz)...")
+        log("2. Iniciando processamento do carrinho (Takao)...")
         log(f"   Produto alvo: {lista_itens[0]['codigo']}")
 
         try:
-            resultado = await processar_lista_produtos_suportematriz(page, lista_itens)
+            resultado = await processar_lista_produtos_takao(page, lista_itens)
         except Exception as e:
             log(f"❌ Erro durante processamento do carrinho: {e}")
             resultado = None
 
-        # ---------------------------------------------------------
-        # RESULTADO E FECHAMENTO
-        # ---------------------------------------------------------
         print("\n--- JSON FINAL ---")
         print(json.dumps(resultado, indent=4, ensure_ascii=False))
         print("------------------")

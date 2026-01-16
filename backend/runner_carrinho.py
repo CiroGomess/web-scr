@@ -10,7 +10,11 @@ from controllers.fornecedores.Fornecedor4Controller import login_fornecedor4  # 
 from controllers.fornecedores.Fornecedor5Controller import login_jahu
 from controllers.fornecedores.Fornecedor6Controller import login_laguna_bypass  # LAGUNA
 from controllers.fornecedores.Fornecedor7Controller import login_rmp
-from controllers.fornecedores.Fornecedor8Controller import login_sama_bypass  # SAMA  <- NOVO
+from controllers.fornecedores.Fornecedor8Controller import login_sama_bypass  # SAMA
+from controllers.fornecedores.Fornecedor9Controller import login_solroom  # SOLROOM
+from controllers.fornecedores.Fornecedor10Controller import login_matriz_bypass  # SUPORTE MATRIZ
+from controllers.fornecedores.Fornecedor11Controller import login_dpk_bypass  # DPK <- NOVO
+from controllers.fornecedores.Fornecedor12Controller import login_takao_bypass  # TAKA0 <- NOVO
 from controllers.fornecedores.Fornecedor13Controller import login_skypecas
 
 # Ações carrinho/pedido
@@ -20,7 +24,11 @@ from controllers.addCarrinho.roles import processar_lista_produtos_roles
 from controllers.addCarrinho.acaraujo import processar_lista_produtos_acaraujo
 from controllers.addCarrinho.gb import processar_lista_produtos_gb
 from controllers.addCarrinho.lagunaautopecas import processar_lista_produtos_laguna
-from controllers.addCarrinho.samaautopecas import processar_lista_produtos_sama  
+from controllers.addCarrinho.samaautopecas import processar_lista_produtos_sama
+from controllers.addCarrinho.solroom import processar_lista_produtos_solroom  # SOLROOM
+from controllers.addCarrinho.suportematriz import processar_lista_produtos_suportematriz  # SUPORTE MATRIZ
+from controllers.addCarrinho.dpk import processar_lista_produtos_dpk  # DPK <- NOVO
+from controllers.addCarrinho.takao import processar_lista_produtos_takao  # TAKA0 <- NOVO
 from controllers.addCarrinho.jahu import processar_lista_produtos_jahu
 from controllers.addCarrinho.skypecas import processar_lista_produtos_skypecas
 
@@ -50,9 +58,25 @@ FORNECEDORES_CARRINHO = {
         "login": login_laguna_bypass,
         "add_to_cart": processar_lista_produtos_laguna,
     },
-    "sama": {  # <- NOVO (Fornecedor 8)
+    "sama": {
         "login": login_sama_bypass,
         "add_to_cart": processar_lista_produtos_sama,
+    },
+    "solroom": {  # (Fornecedor 9)
+        "login": login_solroom,
+        "add_to_cart": processar_lista_produtos_solroom,
+    },
+    "suportematriz": {  # (Fornecedor 10)
+        "login": login_matriz_bypass,
+        "add_to_cart": processar_lista_produtos_suportematriz,
+    },
+    "dpk": {  # <- NOVO (Fornecedor 11)
+        "login": login_dpk_bypass,
+        "add_to_cart": processar_lista_produtos_dpk,
+    },
+    "takao": {  # <- NOVO (Fornecedor 12)
+        "login": login_takao_bypass,
+        "add_to_cart": processar_lista_produtos_takao,
     },
     "jahu": {
         "login": login_jahu,
@@ -109,7 +133,7 @@ ALIASES = {
     "https://compreonline.lagunaautopecas.com.br": "laguna",
     "https://compreonline.lagunaautopecas.com.br/": "laguna",
 
-    # SAMA (Fornecedor 8)  <- NOVO
+    # SAMA (Fornecedor 8)
     "fornecedor8": "sama",
     "fornecedor 8 (sama)": "sama",
     "sama": "sama",
@@ -118,6 +142,36 @@ ALIASES = {
     "compreonline.samaautopecas.com.br": "sama",
     "https://compreonline.samaautopecas.com.br": "sama",
     "https://compreonline.samaautopecas.com.br/": "sama",
+
+    # SOLROOM (Fornecedor 9)
+    "fornecedor9": "solroom",
+    "fornecedor 9 (solroom)": "solroom",
+    "solroom": "solroom",
+    "sol room": "solroom",
+    "sol room rj": "solroom",
+    "solroom.com.br": "solroom",
+    "https://solroom.com.br": "solroom",
+    "https://solroom.com.br/": "solroom",
+
+    # SUPORTE MATRIZ (Fornecedor 10)
+    "fornecedor10": "suportematriz",
+    "fornecedor 10 (suporte matriz)": "suportematriz",
+    "suporte matriz": "suportematriz",
+    "matriz": "suportematriz",
+    "suportematriz": "suportematriz",
+    "suportematriz.ddns.net:5006": "suportematriz",
+    "http://suportematriz.ddns.net:5006": "suportematriz",
+    "http://suportematriz.ddns.net:5006/": "suportematriz",
+
+    # DPK (Fornecedor 11) <- NOVO
+    "fornecedor11": "dpk",
+    "fornecedor 11 (dpk)": "dpk",
+    "dpk": "dpk",
+
+    # TAKAO (Fornecedor 12) <- NOVO
+    "fornecedor12": "takao",
+    "fornecedor 12 (takao)": "takao",
+    "takao": "takao",
 
     # JAHU
     "fornecedor5": "jahu",
