@@ -4,15 +4,29 @@ import json
 from zoneinfo import ZoneInfo
 from configs.db import get_connection
 
+
+def _brl(value: float) -> str:
+    return f"R$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _is_pai(codigo: str) -> bool:
+    return bool(codigo) and ("." not in codigo)
+
+
+def _codigo_pai(codigo: str) -> str:
+    if not codigo:
+        return ""
+    if "." in codigo:
+        return codigo.split(".", 1)[0]
+    return codigo
+
+
 def comparar_precos_entre_fornecedores():
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
 
-        # ============================================================================
-        # 🧠 QUERY INTELIGENTE COM AGREGAÇÃO JSON
-        # ============================================================================
         query = """
             SELECT 
                 ip.codigo_produto,
@@ -39,10 +53,10 @@ def comparar_precos_entre_fornecedores():
             GROUP BY ip.id, pl.id, ip.codigo_produto, ip.nome_produto, ip.imagem_url, pl.fornecedor, ip.preco_unitario, ip.qtd_disponivel, pl.data_processamento
             ORDER BY ip.codigo_produto, pl.data_processamento DESC;
         """
-        
+
         cursor.execute(query)
         resultados = cursor.fetchall()
-        
+
         produtos_map = {}
 
         for row in resultados:
@@ -50,70 +64,105 @@ def comparar_precos_entre_fornecedores():
             nome = row[1]
             imagem = row[2]
             fornecedor = row[3]
-            preco = float(row[4])
+            preco = float(row[4]) if row[4] is not None else 0.0
             estoque = row[5]
-            data = row[6]        # datetime vindo do banco
-            regioes_raw = row[7] # json/lista de dicts
+            data = row[6]
+            regioes_raw = row[7]
 
-            data_formatada = data.strftime('%d/%m/%Y') if data else ""
+            if preco <= 0:
+                continue
 
-            # Processa e formata os preços das regiões para o padrão BRL
+            data_formatada = data.strftime("%d/%m/%Y") if data else ""
+
             regioes_formatadas = []
             if regioes_raw:
                 for reg in regioes_raw:
-                    p_reg = float(reg['preco']) if reg['preco'] else 0.0
+                    p_reg = float(reg.get("preco") or 0.0)
                     regioes_formatadas.append({
-                        "uf": reg['uf'],
+                        "uf": reg.get("uf"),
                         "preco": p_reg,
-                        "preco_formatado": f"R$ {p_reg:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
-                        "estoque": reg['estoque']
+                        "preco_formatado": _brl(p_reg),
+                        "estoque": reg.get("estoque"),
                     })
 
-            # Inicializa o produto no mapa se não existir
             if codigo not in produtos_map:
                 produtos_map[codigo] = {
                     "codigo": codigo,
                     "nome": nome,
                     "imagem": imagem,
-                    "melhor_preco": float('inf'),
+                    "melhor_preco": float("inf"),
                     "fornecedor_vencedor": None,
-                    "ofertas": []
+                    "ofertas": [],
+                    # ✅ NOVO: chave sempre existe (compatibilidade)
+                    "variacoes": []
                 }
 
-            # Evita duplicidade de fornecedor (mantém o mais recente)
-            fornecedores_existentes = [o['fornecedor'] for o in produtos_map[codigo]['ofertas']]
+            # Evita duplicidade de fornecedor (mantém o mais recente por conta do ORDER BY data_processamento DESC)
+            fornecedores_existentes = {o["fornecedor"] for o in produtos_map[codigo]["ofertas"]}
             if fornecedor in fornecedores_existentes:
                 continue
 
             oferta = {
                 "fornecedor": fornecedor,
                 "preco": preco,
-                "preco_formatado": f"R$ {preco:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+                "preco_formatado": _brl(preco),
                 "estoque": estoque,
                 "data_atualizacao": data_formatada,
                 "regioes": regioes_formatadas
             }
-            
-            produtos_map[codigo]['ofertas'].append(oferta)
 
-            # Define o vencedor (Menor Preço)
-            if preco < produtos_map[codigo]['melhor_preco']:
-                produtos_map[codigo]['melhor_preco'] = preco
-                produtos_map[codigo]['fornecedor_vencedor'] = fornecedor
+            produtos_map[codigo]["ofertas"].append(oferta)
 
-        # Formatação final da lista de retorno
+            if preco < produtos_map[codigo]["melhor_preco"]:
+                produtos_map[codigo]["melhor_preco"] = preco
+                produtos_map[codigo]["fornecedor_vencedor"] = fornecedor
+
+        # Normalização final por item (como era antes)
         lista_comparada = []
         for cod, dados in produtos_map.items():
-            melhor_val = dados['melhor_preco']
-            if melhor_val == float('inf'):
+            melhor_val = dados["melhor_preco"]
+            if melhor_val == float("inf"):
                 melhor_val = 0.0
-                
-            dados['melhor_preco_formatado'] = f"R$ {melhor_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            dados['ofertas'].sort(key=lambda x: x['preco'])
+
+            dados["melhor_preco"] = float(melhor_val)
+            dados["melhor_preco_formatado"] = _brl(float(melhor_val))
+            dados["ofertas"].sort(key=lambda x: x["preco"])
+
+            # (variacoes permanece, vai ser preenchido depois só no pai)
             lista_comparada.append(dados)
 
         # ============================================================================
-        # ✅ NOVO: Buscar a última data de processamento (tabela de controle)
+        # ✅ NOVO: Preencher variacoes APENAS dentro do PAI, sem mudar o retorno "flat"
+        # ============================================================================
+        # cria índice por código para inserir objetos completos nas variações
+        idx_por_codigo = {p["codigo"]: p for p in lista_comparada}
+
+        # mapeia pai -> lista de variações (objetos completos)
+        variacoes_por_pai = {}
+        for codigo, item in idx_por_codigo.items():
+            if "." in codigo:
+                pai = _codigo_pai(codigo)
+                variacoes_por_pai.setdefault(pai, []).append(item)
+
+        # injeta as variações dentro do item pai, mantendo o pai como destaque
+        for pai_codigo, variacoes in variacoes_por_pai.items():
+            pai_item = idx_por_codigo.get(pai_codigo)
+            if not pai_item:
+                # Se o pai NÃO existir no retorno atual, não inventa item novo (mantém "do jeito que estava").
+                # Se você quiser criar "pai virtual", eu ajusto.
+                continue
+
+            # ordena variações pelo melhor preço (ou por código, se preferir)
+            variacoes.sort(key=lambda x: float(x.get("melhor_preco") or 0.0))
+
+            # garante que variações não carreguem variações dentro (evita recursão)
+            for v in variacoes:
+                v["variacoes"] = []
+
+            pai_item["variacoes"] = variacoes
+
+        # ============================================================================
+        # ✅ Buscar a última data de processamento (tabela de controle)
         # ============================================================================
         cursor.execute("""
             SELECT ultima_data_processamento
@@ -130,7 +179,6 @@ def comparar_precos_entre_fornecedores():
             dt = row_last[0]
             br_tz = ZoneInfo("America/Fortaleza")
 
-            # Se vier timezone-aware, converte; se vier naive, assume BR
             if getattr(dt, "tzinfo", None) is not None and dt.tzinfo is not None:
                 dt_br = dt.astimezone(br_tz)
             else:
@@ -139,18 +187,21 @@ def comparar_precos_entre_fornecedores():
             ultima_data_br_formatada = dt_br.strftime("%d/%m/%Y %H:%M:%S")
             ultima_data_br_iso = dt_br.isoformat()
 
+        # mantém ordenação original (por código e data já veio do SQL; aqui não mexo além do sort opcional)
+        lista_comparada.sort(key=lambda x: (x.get("codigo") or ""))
+
         return {
             "success": True,
             "total_produtos_analisados": len(lista_comparada),
-            "ultima_data_processamento": ultima_data_br_formatada,   # ex: 05/01/2026 14:32:10
-            "ultima_data_processamento_iso": ultima_data_br_iso,     # opcional (útil pro front)
+            "ultima_data_processamento": ultima_data_br_formatada,
+            "ultima_data_processamento_iso": ultima_data_br_iso,
             "comparativo": lista_comparada
         }
 
     except Exception as e:
         print(f"❌ Erro ao comparar preços no banco: {e}")
         return {"success": False, "error": str(e)}
-    
+
     finally:
         if conn:
             conn.close()
