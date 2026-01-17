@@ -8,6 +8,7 @@ from flask_cors import CORS
 from flask_jwt_extended import JWTManager, jwt_required
 from controllers.routes.userController import user_bp
 # ====================================================================
+from services.db_saver import limpar_banco_processamento
 
 # Importação do Runner de Processamento de Dados (Extração)
 from runner import main
@@ -152,6 +153,11 @@ def upload_file():
 @jwt_required()
 def processar():
     try:
+        # ✅ Limpa o banco antes de iniciar um novo processamento
+        limpeza = limpar_banco_processamento()
+        if not limpeza.get("success"):
+            return jsonify(error=f"Erro ao limpar banco: {limpeza.get('error')}"), 500
+
         try:
             result = asyncio.run(main())
         except RuntimeError:

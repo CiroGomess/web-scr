@@ -149,3 +149,46 @@ def salvar_lote_postgres(dados_lote):
     finally:
         if conn:
             conn.close()
+
+
+def limpar_banco_processamento():
+    """
+    Limpa somente as tabelas do pipeline de processamento, antes de processar um novo documento.
+    - Zera: itens_detalhes_regionais, itens_processados, processamentos_lotes
+    - Reseta (mantém a linha): controle_ultimo_processamento (id=1)
+    """
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        # TRUNCATE nas tabelas principais (ordem e CASCADE evitam erro de FK)
+        cursor.execute("""
+            TRUNCATE TABLE
+                itens_detalhes_regionais,
+                itens_processados,
+                processamentos_lotes
+            RESTART IDENTITY CASCADE;
+        """)
+
+        # Em vez de truncar a tabela de controle (para não depender de reinserção),
+        # apenas reseta o campo. Garante que exista o registro id=1.
+        cursor.execute("""
+            INSERT INTO controle_ultimo_processamento (id, ultima_data_processamento)
+            VALUES (1, NULL)
+            ON CONFLICT (id) DO UPDATE
+            SET ultima_data_processamento = NULL;
+        """)
+
+        conn.commit()
+        return {"success": True}
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"❌ Erro ao limpar banco de processamento: {e}")
+        return {"success": False, "error": str(e)}
+
+    finally:
+        if conn:
+            conn.close()
