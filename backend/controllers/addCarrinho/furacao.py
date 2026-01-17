@@ -16,107 +16,172 @@ def _to_int(v, default: int = 1) -> int:
 
 
 # ---------------------------
-# 0) GARANTIR TELA DE PESQUISA (onde existe input#gsearch)
+# 0) GARANTIR TELA DE "NOVO PEDIDO" (onde existe o input de busca do pedido)
 # ---------------------------
-async def garantir_tela_pesquisa_furacao(page) -> None:
-    selector_busca = "input#gsearch"
+async def garantir_tela_pedido_furacao(page) -> None:
+    """
+    Garante que estamos na tela do pedido (fast pedido),
+    onde existe o input com placeholder "Digite o código, descrição, similar ou marca do produto".
+    Se não estiver, navega via:
+      Pedidos -> Novo Pedido -> Continuar
+    """
+    busca_selector = "input[placeholder^='Digite o código, descrição, similar ou marca do produto']"
+
+    # Já está no pedido?
     try:
-        await page.wait_for_selector(selector_busca, state="visible", timeout=15000)
-        return
+        if await page.locator(busca_selector).count() > 0:
+            await page.wait_for_selector(busca_selector, state="visible", timeout=8000)
+            return
     except Exception:
         pass
 
+    # Tenta abrir home/app (caso esteja em outra rota)
     possiveis_urls = [
         "https://vendas.furacao.com.br/",
         "https://vendas.furacao.com.br/#/",
-        "https://vendas.furacao.com.br/#/produtos",
     ]
 
     for url in possiveis_urls:
         try:
-            log_interno(f"Tentando abrir tela de pesquisa: {url}")
+            log_interno(f"Tentando abrir: {url}")
             await page.goto(url, wait_until="domcontentloaded")
-            await asyncio.sleep(1.0)
-            if await page.locator(selector_busca).count() > 0:
-                await page.wait_for_selector(selector_busca, state="visible", timeout=15000)
+            await asyncio.sleep(1.2)
+            if await page.locator(busca_selector).count() > 0:
+                await page.wait_for_selector(busca_selector, state="visible", timeout=10000)
                 return
         except Exception:
             continue
 
-    log_interno("Aviso: não consegui garantir a tela de pesquisa automaticamente.")
+    # Se ainda não está, força o fluxo do menu Pedidos -> Novo Pedido -> Continuar
+    try:
+        # Abrir dropdown "Pedidos"
+        dropdown_pedidos = page.locator("li.dropdown > a.dropdown-toggle:has-text('Pedidos')").first
+        if await dropdown_pedidos.count() > 0:
+            log_interno("Abrindo menu: Pedidos")
+            await dropdown_pedidos.click(force=True)
+            await asyncio.sleep(0.6)
+        else:
+            log_interno("Aviso: não achei o dropdown 'Pedidos' de primeira.")
+
+        # Clicar em "Novo Pedido" (abre modal)
+        link_novo_pedido = page.locator("a:has-text('Novo Pedido')").first
+        if await link_novo_pedido.count() == 0:
+            # fallback pelo data-target do modal
+            link_novo_pedido = page.locator("a[data-target='#selecionarClienteModalCli']").first
+
+        if await link_novo_pedido.count() > 0:
+            log_interno("Clicando em: Novo Pedido")
+            await link_novo_pedido.click(force=True)
+            await asyncio.sleep(1.0)
+        else:
+            log_interno("Aviso: link 'Novo Pedido' não encontrado.")
+            # tenta mesmo assim achar o campo depois
+            await asyncio.sleep(1.0)
+
+        # Clicar "Continuar" no modal
+        btn_continuar = page.locator("button.btn.btn-primary:has-text('Continuar')").first
+        if await btn_continuar.count() == 0:
+            # fallback pelo ng-click
+            btn_continuar = page.locator("button[ng-click*='abrir_pedido_cliente']").first
+
+        if await btn_continuar.count() > 0:
+            log_interno("Clicando em: Continuar (modal)")
+            await btn_continuar.click(force=True)
+            await asyncio.sleep(1.5)
+        else:
+            log_interno("Aviso: botão 'Continuar' não encontrado no modal.")
+            await asyncio.sleep(1.0)
+
+        # Agora espera o input do pedido aparecer
+        log_interno("Aguardando campo de busca do pedido aparecer...")
+        await page.wait_for_selector(busca_selector, state="visible", timeout=20000)
+        await asyncio.sleep(1.0)
+
+    except Exception as e:
+        log_interno(f"Aviso: falha ao garantir tela de pedido via menu: {e}")
 
 
 # ---------------------------
-# 1) BUSCA
+# 1) BUSCAR PRODUTO NO PEDIDO (digita + ENTER para adicionar)
 # ---------------------------
-async def buscar_produto_furacao(page, codigo: str) -> None:
-    await garantir_tela_pesquisa_furacao(page)
-
-    selector_busca = "input#gsearch"
+async def buscar_produto_no_pedido(page, codigo: str) -> Dict[str, Any]:
     codigo = (codigo or "").strip()
-
-    log_interno(f"Buscando pelo código: {codigo}")
-
-    await page.wait_for_selector(selector_busca, state="visible", timeout=20000)
-    campo = page.locator(selector_busca).first
-
-    await campo.click(force=True)
-    try:
-        await campo.fill("")
-    except Exception:
-        pass
-
-    await campo.fill(str(codigo))
-    await asyncio.sleep(0.3)
+    busca_selector = "input[placeholder^='Digite o código, descrição, similar ou marca do produto']"
+    qty_selector = "#fast_pedido_quant"
 
     try:
-        await campo.press("Enter")
-    except Exception:
-        await page.keyboard.press("Enter")
+        await garantir_tela_pedido_furacao(page)
 
-    # Espera aparecer pelo menos uma linha de resultado
-    try:
-        await page.wait_for_selector("tr[ng-controller='RowCtrl']", state="attached", timeout=15000)
-    except Exception:
-        log_interno("Nenhum resultado apareceu (tr[RowCtrl] não carregou).")
+        await page.wait_for_selector(busca_selector, state="visible", timeout=20000)
+        campo = page.locator(busca_selector).first
 
-    # "vai com calma"
-    await asyncio.sleep(2.0)
+        log_interno(f"Buscando (pedido): {codigo}")
+        await campo.click(force=True)
+
+        # limpa
+        try:
+            await campo.fill("")
+        except Exception:
+            pass
+
+        await campo.fill(codigo)
+        await asyncio.sleep(0.7)
+
+        # ENTER para adicionar o produto (como você pediu)
+        log_interno("Pressionando ENTER para adicionar o produto...")
+        try:
+            await campo.press("Enter")
+        except Exception:
+            await page.keyboard.press("Enter")
+
+        # vai com calma: espera o produto “assentar”
+        await asyncio.sleep(1.2)
+
+        # Em alguns casos o autocomplete exige mais uma confirmação
+        # (mantive para robustez; se não precisar, não atrapalha)
+        log_interno("Pressionando ENTER novamente (confirmação, se necessário)...")
+        try:
+            await campo.press("Enter")
+        except Exception:
+            await page.keyboard.press("Enter")
+
+        await asyncio.sleep(1.2)
+
+        # Espera o input de quantidade existir (mesmo que ainda esteja disabled)
+        await page.wait_for_selector(qty_selector, state="attached", timeout=15000)
+
+        return {"success": True}
+
+    except Exception as e:
+        return {"success": False, "error": f"Erro ao buscar/adicionar produto no pedido: {e}"}
 
 
 # ---------------------------
-# 2) NO RESULTADO: PEGAR PRIMEIRO ROW DO GRID
+# 2) SETAR QUANTIDADE (input #fast_pedido_quant)
 # ---------------------------
-async def pegar_primeiro_row_resultado(page):
-    row = page.locator("tr[ng-controller='RowCtrl']").first
-    if await row.count() == 0:
-        return None
-    return row
-
-
-# ---------------------------
-# 3) SETAR QUANTIDADE (input ng-model="$row.quantidade")
-# ---------------------------
-async def setar_quantidade_no_row(row, quantidade: int) -> Dict[str, Any]:
+async def setar_quantidade_fast(page, quantidade: int) -> Dict[str, Any]:
     quantidade = _to_int(quantidade, 1)
-
-    qty_input = row.locator('input[ng-model="$row.quantidade"]').first
-    if await qty_input.count() == 0:
-        # fallback por classes (caso ng-model mude)
-        qty_input = row.locator("input.prod-input").first
-
-    if await qty_input.count() == 0:
-        return {"success": False, "error": "Input de quantidade não encontrado no row."}
+    qty_selector = "#fast_pedido_quant"
 
     try:
+        await page.wait_for_selector(qty_selector, state="attached", timeout=15000)
+        qty_input = page.locator(qty_selector).first
+
+        # esperar habilitar (disabled some quando produto foi adicionado)
+        for _ in range(30):
+            disabled = await qty_input.get_attribute("disabled")
+            if disabled is None:
+                break
+            await asyncio.sleep(0.35)
+
         await qty_input.scroll_into_view_if_needed()
         await qty_input.click(force=True)
 
-        # Primeiro tenta fill normal
+        # tenta fill normal
         try:
             await qty_input.fill(str(quantidade))
         except Exception:
-            # fallback via JS (Angular às vezes precisa)
+            # fallback JS (Angular)
             await qty_input.evaluate(
                 """(el, v) => {
                     el.value = v;
@@ -127,7 +192,7 @@ async def setar_quantidade_no_row(row, quantidade: int) -> Dict[str, Any]:
                 str(quantidade),
             )
 
-        # redundância de eventos
+        # redundância
         try:
             await qty_input.dispatch_event("input")
             await qty_input.dispatch_event("change")
@@ -137,7 +202,6 @@ async def setar_quantidade_no_row(row, quantidade: int) -> Dict[str, Any]:
         log_interno(f"Quantidade setada para {quantidade}. Aguardando 3 segundos...")
         await asyncio.sleep(3.0)
 
-        # valida leitura
         final_val = None
         try:
             final_val = await qty_input.input_value()
@@ -147,52 +211,56 @@ async def setar_quantidade_no_row(row, quantidade: int) -> Dict[str, Any]:
         return {"success": True, "qtd_enviada": quantidade, "qtd_final": final_val}
 
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": f"Erro ao setar quantidade: {e}"}
 
 
 # ---------------------------
-# 4) CLICAR NO BOTÃO COMPRAR/ADICIONAR (no próprio row)
+# 3) CLICAR NO BOTÃO "+" (adicionar item no pedido)
 # ---------------------------
-async def clicar_comprar_no_row(row) -> Dict[str, Any]:
-    # Seu botão:
-    # <button type="submit" class="btn btn-default" ...>
-    #   <span ...> Adicionar </span>
-    #   <span ...> <strong>Comprar</strong> </span>
-    # </button>
-
-    # 1) tenta pelo type submit dentro do row
-    btn = row.locator("button[type='submit']").first
-
-    # 2) fallback por texto "Comprar" ou "Adicionar"
-    if await btn.count() == 0:
-        btn = row.locator("button:has-text('Comprar')").first
-    if await btn.count() == 0:
-        btn = row.locator("button:has-text('Adicionar')").first
-
-    if await btn.count() == 0:
-        return {"success": False, "error": "Botão Comprar/Adicionar não encontrado no row."}
+async def clicar_botao_mais(page) -> Dict[str, Any]:
+    # seu botão:
+    # <button ... class="btn btn-primary btn-block" style="width: 40px"><i class="fa fa-plus"></i></button>
 
     try:
+        btn = page.locator("button[type='submit']:has(i.fa.fa-plus)").first
+        if await btn.count() == 0:
+            btn = page.locator("button:has(i.fa-plus)").first
+        if await btn.count() == 0:
+            btn = page.locator("button.btn.btn-primary.btn-block").first
+
+        if await btn.count() == 0:
+            return {"success": False, "error": "Botão (+) não encontrado."}
+
+        # esperar habilitar (ng-disabled)
+        for _ in range(30):
+            disabled = await btn.get_attribute("disabled")
+            if disabled is None:
+                break
+            await asyncio.sleep(0.35)
+
         await btn.scroll_into_view_if_needed()
-        log_interno("Clicando no botão Comprar/Adicionar...")
+
+        log_interno("Clicando no botão (+) para adicionar item...")
         await btn.click(force=True)
 
-        # espera “com calma” após clicar
-        log_interno("Aguardando 3 segundos após clicar no botão...")
+        log_interno("Aguardando 3 segundos após clicar no (+)...")
         await asyncio.sleep(3.0)
 
         return {"success": True}
 
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": f"Erro ao clicar no (+): {e}"}
 
 
 # ---------------------------
-# 5) FUNÇÃO PRINCIPAL (PRODUÇÃO)
+# 4) FUNÇÃO PRINCIPAL (PRODUÇÃO)
 # ---------------------------
 async def processar_lista_produtos_furacao(page, itens: List[Dict[str, Any]]) -> Dict[str, Any]:
-    resultados = []
+    resultados: List[Dict[str, Any]] = []
     log_interno(f"Processando {len(itens)} itens (Furacão) para carrinho...")
+
+    # garante tela do pedido antes do loop (melhor performance)
+    await garantir_tela_pedido_furacao(page)
 
     for item in itens:
         codigo = (item.get("codigo") or item.get("sku") or "").strip()
@@ -201,25 +269,37 @@ async def processar_lista_produtos_furacao(page, itens: List[Dict[str, Any]]) ->
         log_interno(f"--- FURAÇÃO: {codigo} / Qtd: {quantidade} ---")
 
         try:
-            # 1) Buscar
-            await buscar_produto_furacao(page, codigo)
-
-            # 2) Primeiro row
-            row = await pegar_primeiro_row_resultado(page)
-            if not row:
-                resultados.append({"success": False, "codigo": codigo, "quantidade": quantidade, "error": "Nenhum resultado encontrado."})
+            # 1) Buscar e ENTER para adicionar o produto
+            res_busca = await buscar_produto_no_pedido(page, codigo)
+            if not res_busca.get("success"):
+                resultados.append({
+                    "success": False,
+                    "codigo": codigo,
+                    "quantidade": quantidade,
+                    "detalhes": res_busca,
+                })
                 continue
 
-            # 3) Setar quantidade
-            qtd_res = await setar_quantidade_no_row(row, quantidade)
-            if not qtd_res.get("success"):
-                resultados.append({"success": False, "codigo": codigo, "quantidade": quantidade, "detalhes": qtd_res})
+            # 2) Setar quantidade
+            res_qtd = await setar_quantidade_fast(page, quantidade)
+            if not res_qtd.get("success"):
+                resultados.append({
+                    "success": False,
+                    "codigo": codigo,
+                    "quantidade": quantidade,
+                    "detalhes": res_qtd,
+                })
                 continue
 
-            # 4) Clicar Comprar/Adicionar
-            click_res = await clicar_comprar_no_row(row)
-            if not click_res.get("success"):
-                resultados.append({"success": False, "codigo": codigo, "quantidade": quantidade, "detalhes": click_res})
+            # 3) Clicar no (+) para adicionar
+            res_add = await clicar_botao_mais(page)
+            if not res_add.get("success"):
+                resultados.append({
+                    "success": False,
+                    "codigo": codigo,
+                    "quantidade": quantidade,
+                    "detalhes": res_add,
+                })
                 continue
 
             resultados.append({
@@ -227,13 +307,19 @@ async def processar_lista_produtos_furacao(page, itens: List[Dict[str, Any]]) ->
                 "codigo": codigo,
                 "quantidade": quantidade,
                 "detalhes": {
-                    "quantidade": qtd_res,
-                    "click": click_res,
+                    "busca": res_busca,
+                    "quantidade": res_qtd,
+                    "add": res_add,
                 }
             })
 
         except Exception as e:
-            resultados.append({"success": False, "codigo": codigo, "quantidade": quantidade, "error": str(e)})
+            resultados.append({
+                "success": False,
+                "codigo": codigo,
+                "quantidade": quantidade,
+                "error": str(e),
+            })
 
     log_interno("Aguardando 3 segundos antes de encerrar...")
     await asyncio.sleep(3.0)
