@@ -3,11 +3,11 @@ import json
 from datetime import datetime
 from playwright.async_api import async_playwright
 
-# 1) Login (Fornecedor 14 - Pellegrino / Sky)
-from controllers.fornecedores.Fornecedor16Controller import login_furacao_bypass
+# 1) Login (Fornecedor 17 - PLS Web / Odapel)
+from controllers.fornecedores.Fornecedor17Controller import login_pls_bypass
 
-# 2) Automação carrinho (Pellegrino)
-from controllers.addCarrinho.furacao import processar_lista_produtos_furacao
+# 2) Automação carrinho (PLS Web / Odapel)
+from controllers.addCarrinho.odapel import processar_lista_produtos_odapel
 
 
 def log(mensagem):
@@ -16,23 +16,25 @@ def log(mensagem):
 
 
 async def main():
+    # código do produto -> 5235.3
     lista_itens = [
         {
-            "codigo": "3G0919866D",
-            "quantidade": 2
+            "codigo": "8833.1",
+            "quantidade": 3
         }
     ]
 
-    log("=== INICIANDO TESTE MANUAL (PELLEGRINO / FORNECEDOR 14) ===")
+    log("=== INICIANDO TESTE MANUAL (PLS WEB / ODAPEL - FORNECEDOR 17) ===")
 
     async with async_playwright() as p:
         # ---------------------------------------------------------
         # PASSO 1: LOGIN
         # ---------------------------------------------------------
-        log("1. Executando Login (Fornecedor14Controller)...")
+        log("1. Executando Login (Fornecedor17Controller)...")
 
+        browser = None
         try:
-            browser, context, page = await login_furacao_bypass(p)
+            browser, context, page = await login_pls_bypass(p)
         except Exception as e:
             log(f"❌ Erro fatal no login: {e}")
             return
@@ -46,13 +48,13 @@ async def main():
         log("✅ Login realizado com sucesso! Página ativa.")
 
         # ---------------------------------------------------------
-        # PASSO 2: ADICIONAR AO CARRINHO (Buscar -> Setar qtd -> Botão)
+        # PASSO 2: ADICIONAR AO CARRINHO (Buscar -> ENTER -> Qtd -> Sim)
         # ---------------------------------------------------------
-        log("2. Iniciando processamento do carrinho (Pellegrino)...")
+        log("2. Iniciando processamento do carrinho (PLS Web / Odapel)...")
         log(f"   Produto alvo: {lista_itens[0]['codigo']}")
 
         try:
-            resultado = await processar_lista_produtos_furacao(page, lista_itens)
+            resultado = await processar_lista_produtos_odapel(page, lista_itens)
         except Exception as e:
             log(f"❌ Erro durante processamento do carrinho: {e}")
             resultado = None

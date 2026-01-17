@@ -44,7 +44,7 @@ async def login_pls_bypass(p):
 
     context = await browser.new_context(
         user_agent=random.choice(USER_AGENTS),
-        viewport={'width': 1366, 'height': 768},
+        viewport={'width': 1920, 'height': 768},
         locale="pt-BR",
         timezone_id="America/Sao_Paulo",
         java_script_enabled=True
