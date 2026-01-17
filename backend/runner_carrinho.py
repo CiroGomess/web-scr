@@ -18,6 +18,7 @@ from controllers.fornecedores.Fornecedor12Controller import login_takao_bypass  
 from controllers.fornecedores.Fornecedor13Controller import login_skypecas
 from controllers.fornecedores.Fornecedor14Controller import login_sky_bypass  # PELLEGRINO / SKY
 from controllers.fornecedores.Fornecedor16Controller import login_furacao_bypass  # FURAÇÃO
+from controllers.fornecedores.Fornecedor17Controller import login_pls_bypass  # ODAPEL / PLS <- NOVO
 
 # Ações carrinho/pedido
 from controllers.addCarrinho.portalcomdip import adicionar_itens_ao_carrinho_portalcomdip
@@ -35,6 +36,7 @@ from controllers.addCarrinho.jahu import processar_lista_produtos_jahu
 from controllers.addCarrinho.skypecas import processar_lista_produtos_skypecas
 from controllers.addCarrinho.pellegrino import processar_lista_produtos_pellegrino
 from controllers.addCarrinho.furacao import processar_lista_produtos_furacao
+from controllers.addCarrinho.odapel import processar_lista_produtos_odapel  
 
 
 FORNECEDORES_CARRINHO = {
@@ -91,6 +93,10 @@ FORNECEDORES_CARRINHO = {
     "furacao": {  # <- Fornecedor 16
         "login": login_furacao_bypass,
         "add_to_cart": processar_lista_produtos_furacao,
+    },
+    "odapel": {  # <- Fornecedor 17 (PLS Web / Odapel)
+        "login": login_pls_bypass,
+        "add_to_cart": processar_lista_produtos_odapel,
     },
 
     "jahu": {
@@ -188,7 +194,7 @@ ALIASES = {
     "fornecedor 12 (takao)": "takao",
     "takao": "takao",
 
-    # NOVOS - PELLEGRINO / SKY (Fornecedor 14)
+    # PELLEGRINO / SKY (Fornecedor 14)
     "fornecedor14": "pellegrino",
     "fornecedor 14 (pellegrino)": "pellegrino",
     "pellegrino": "pellegrino",
@@ -197,7 +203,7 @@ ALIASES = {
     "https://compreonline.pellegrino.com.br": "pellegrino",
     "https://compreonline.pellegrino.com.br/": "pellegrino",
 
-    # NOVOS - FURAÇÃO (Fornecedor 16)
+    # FURAÇÃO (Fornecedor 16)
     "fornecedor16": "furacao",
     "fornecedor 16 (furacao)": "furacao",
     "furacao": "furacao",
@@ -205,6 +211,16 @@ ALIASES = {
     "vendas.furacao.com.br": "furacao",
     "https://vendas.furacao.com.br": "furacao",
     "https://vendas.furacao.com.br/": "furacao",
+
+    # ODAPEL / PLS (Fornecedor 17) <- NOVO
+    "fornecedor17": "odapel",
+    "fornecedor 17 (odapel)": "odapel",
+    "fornecedor 17 (pls)": "odapel",
+    "odapel": "odapel",
+    "pls": "odapel",
+    "plsweb": "odapel",
+    "pls web": "odapel",
+    "/movimentacao": "odapel",
 
     # JAHU
     "fornecedor5": "jahu",
