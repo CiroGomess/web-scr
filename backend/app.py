@@ -3,12 +3,12 @@ import os
 import asyncio
 from datetime import datetime, timedelta
 from flask_cors import CORS
-
+import glob
 # ===================== IMPORTAÇÕES DO FLASK JWT ===================== #
 from flask_jwt_extended import JWTManager, jwt_required
 from controllers.routes.userController import user_bp
 # ====================================================================
-from services.db_saver import limpar_banco_processamento
+from services.db_saver import limpar_banco_processamento, atualizar_ultimo_processamento
 
 # Importação do Runner de Processamento de Dados (Extração)
 from runner import main
@@ -22,7 +22,7 @@ from controllers.routes.comparandoProd import comparar_precos_entre_fornecedores
 from configs.db import get_connection
 from zoneinfo import ZoneInfo
 
-
+from utils.limpar_dados_temp import limpar_pasta_temp
 
 
 
@@ -50,34 +50,6 @@ ALLOWED_EXTENSIONS = {"xlsx"}
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
-
-def atualizar_ultimo_processamento(dt_br):
-    conn = None
-    cursor = None
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            INSERT INTO controle_ultimo_processamento (id, ultima_data_processamento, atualizado_em)
-            VALUES (1, %s, %s)
-            ON CONFLICT (id) DO UPDATE
-            SET ultima_data_processamento = EXCLUDED.ultima_data_processamento,
-                atualizado_em = EXCLUDED.atualizado_em;
-        """, (dt_br, dt_br))
-
-        conn.commit()
-
-    except Exception:
-        if conn:
-            conn.rollback()
-        raise
-
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
 
 
 
@@ -164,10 +136,22 @@ def processar():
             loop = asyncio.get_event_loop()
             result = loop.run_until_complete(main())
 
+        # ✅ Atualiza o controle de último processamento ao finalizar (OBRIGATÓRIO)
+        ok_ctrl = atualizar_ultimo_processamento(datetime.now(ZoneInfo("America/Fortaleza")))
+        if not ok_ctrl:
+            return jsonify(error="Processou, mas falhou ao atualizar controle_ultimo_processamento."), 500
+
+        # ✅ Limpa arquivos temporários (data/temp)
+        limpeza_temp = limpar_pasta_temp("data/temp")
+        if not limpeza_temp.get("success"):
+            # você pode optar por NÃO quebrar a rota se falhar, mas aqui está como erro 500
+            return jsonify(error="Processou, mas falhou ao limpar data/temp.", detalhes=limpeza_temp), 500
+
         return jsonify({
             "message": "Processamento concluído!",
             "total_processado": result.get("total_processado", 0),
-            "resultado": result
+            "resultado": result,
+            "limpeza_temp": limpeza_temp
         })
 
     except Exception as e:

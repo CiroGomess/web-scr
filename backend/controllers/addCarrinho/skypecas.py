@@ -22,38 +22,26 @@ async def _buscar_produto_skypecas(page, codigo: str) -> None:
     await inp.fill("")
     await inp.fill(codigo)
 
-    # Em muitos layouts o "enter" dispara a busca
     await inp.press("Enter")
 
-    # aguarda render do resultado
     await asyncio.sleep(1.2)
 
 
 async def _achar_card_por_codigo(page, codigo: str):
-    """
-    Resultado típico:
-      <div class="bx_produto"> ... <div class="codfab">Cód. Fáb: <strong>82696FLEX</strong> ...
-    O "codigo" do front pode ser:
-      - Cód. Fáb (strong)
-      - N/N (div.codnn)
-    """
     codigo = (codigo or "").strip()
     if not codigo:
         return None
 
     await page.wait_for_selector(".bx_produto", timeout=20000)
 
-    # 1) tenta pelo Cód. Fáb
     card = page.locator(".bx_produto", has=page.locator(".codfab strong", has_text=codigo)).first
     if await card.count() > 0:
         return card
 
-    # 2) tenta pelo N/N
     card = page.locator(".bx_produto", has=page.locator(".codnn", has_text=codigo)).first
     if await card.count() > 0:
         return card
 
-    # 3) fallback: qualquer card que contenha o texto (menos preciso)
     card = page.locator(".bx_produto", has_text=codigo).first
     if await card.count() > 0:
         return card
@@ -62,32 +50,49 @@ async def _achar_card_por_codigo(page, codigo: str):
 
 
 async def _extrair_nn_do_card(card) -> Optional[str]:
-    """
-    No HTML:
-      <div class="fleft codnn">N/N: 270942J</div>
-    """
     el = card.locator(".codnn").first
     if await el.count() == 0:
         return None
 
     txt = (await el.inner_text()) or ""
     txt = txt.replace("\n", " ").strip()
-    # espera "N/N: 270942J"
     if ":" in txt:
         return txt.split(":", 1)[1].strip() or None
     return txt.strip() or None
 
 
+async def _produto_indisponivel_no_card(card) -> bool:
+    """
+    Detecta o cenário:
+      <a class="lkEstoqueProduto indisponivel">indisponivel ...</a>
+    ou
+      <span class="lkDisp"> ... indisponivel ...</span>
+    """
+    try:
+        # 1) classe "indisponivel" no link de estoque
+        el = card.locator(".lkEstoqueProduto.indisponivel").first
+        if await el.count() > 0 and await el.is_visible():
+            return True
+    except Exception:
+        pass
+
+    try:
+        # 2) texto "indisponivel" dentro do bloco de estoque
+        txt = (await card.locator(".lkDisp").first.inner_text()) if await card.locator(".lkDisp").count() > 0 else ""
+        txt = (txt or "").lower()
+        if "indisponivel" in txt or "indisponível" in txt:
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
 async def _tentar_setar_quantidade_no_card(card, quantidade: int) -> Dict[str, Any]:
-    """
-    Nem sempre existe input de quantidade no card.
-    Se existir, tentamos setar. Se não existir, retornamos modo "click_repeat".
-    """
     quantidade = _to_int(quantidade, 1)
     if quantidade < 1:
         quantidade = 1
 
-    # heurísticas comuns
     possiveis = [
         "input[name='quantidade']",
         "input[name='qtde']",
@@ -123,10 +128,6 @@ async def _tentar_setar_quantidade_no_card(card, quantidade: int) -> Dict[str, A
 
 
 async def _clicar_adicionar(card, nn: Optional[str] = None) -> None:
-    """
-    Botão:
-      <a href="" id="lkAdd270942J" class="lkAdicionar lkBotao">+ Adicionar no Carrinho</a>
-    """
     btn = None
     if nn:
         btn = card.locator(f"#lkAdd{nn}").first
@@ -138,8 +139,6 @@ async def _clicar_adicionar(card, nn: Optional[str] = None) -> None:
 
     await btn.wait_for(state="visible", timeout=20000)
     await btn.click()
-
-    # você informou ~3 segundos de processamento após clicar
     await asyncio.sleep(3.0)
 
 
@@ -167,17 +166,25 @@ async def processar_lista_produtos_skypecas(page, itens: List[Dict[str, Any]]) -
             resultados.append({"success": False, "error": "Produto não encontrado", "codigo": codigo})
             continue
 
+        # ✅ NOVO: se aparecer "indisponivel", não tenta adicionar e segue o fluxo
+        if await _produto_indisponivel_no_card(card):
+            resultados.append({
+                "success": False,
+                "codigo": codigo,
+                "error": "Sem estoque (indisponível)",
+                "quantidade": quantidade,
+            })
+            continue
+
         nn = await _extrair_nn_do_card(card)
 
         qty_info = await _tentar_setar_quantidade_no_card(card, quantidade)
 
-        # Se não tem input de quantidade, repetimos o clique (1 clique = +1 unidade)
         if qty_info.get("modo") == "click_repeat":
             max_clicks = min(max(quantidade, 1), 50)
-            for i in range(max_clicks):
+            for _ in range(max_clicks):
                 await _clicar_adicionar(card, nn=nn)
         else:
-            # se conseguiu setar a quantidade em input, clica uma vez para adicionar
             await _clicar_adicionar(card, nn=nn)
 
         resultados.append({
@@ -188,4 +195,5 @@ async def processar_lista_produtos_skypecas(page, itens: List[Dict[str, Any]]) -
             "qty_info": qty_info,
         })
 
+    # Mantém "success": True no batch; cada item diz se falhou por estoque.
     return {"success": True, "itens": resultados}

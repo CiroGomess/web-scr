@@ -70,7 +70,7 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
             "codigo": codigo_solicitado, "nome": None, "marca": None, "imagem": None,
             "preco": "R$ 0,00", "preco_num": 0.0, "preco_formatado": "R$ 0,00",
             "valor_total": 0.0, "valor_total_formatado": "R$ 0,00",
-            "uf": "SP",
+            "uf": "RJ",
             "qtdSolicitada": quantidade_solicitada, "qtdDisponivel": 0,
             "podeComprar": False, "disponivel": False, "status": "Não encontrado",
             "regioes": []
@@ -137,7 +137,7 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
     pode_comprar = tem_estoque and (qtd_disponivel >= quantidade_solicitada)
 
     regiao_sp = {
-        "uf": "SP",
+        "uf": "RJ",
         "preco": preco_raw,
         "preco_num": preco_num,
         "preco_formatado": format_brl(preco_num),
@@ -160,7 +160,7 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
         "preco_formatado": format_brl(preco_num),
         "valor_total": valor_total,
         "valor_total_formatado": format_brl(valor_total),
-        "uf": "SP",
+        "uf": "RJ",
         "qtdSolicitada": quantidade_solicitada,
         "qtdDisponivel": qtd_disponivel,
         "podeComprar": pode_comprar,

@@ -14,144 +14,190 @@ except ImportError:
 
 # ===================== AUXILIARES ===================== #
 def clean_price(preco_str):
-    if not preco_str: return 0.0
-    preco = re.sub(r'[^\d,]', '', preco_str)
+    if not preco_str:
+        return 0.0
+    preco = re.sub(r"[^\d,]", "", str(preco_str))
     preco = preco.replace(",", ".")
-    try: return float(preco)
-    except: return 0.0
+    try:
+        return float(preco)
+    except:
+        return 0.0
 
 def format_brl(valor):
-    if valor is None or valor == 0: return "R$ 0,00"
+    if valor is None or valor == 0:
+        return "R$ 0,00"
     return "R$ " + f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+# ===================== NOVO: FECHADOR ROBUSTO DO DRIVER.JS ===================== #
+async def fechar_driver_tutorial(page, motivo=""):
+    """
+    Fecha o popover do Driver.js com calma (esperas) e valida que sumiu.
+    Pode ser chamado quantas vezes quiser (idempotente).
+    """
+    try:
+        btn_close = page.locator("button.driver-popover-close-btn")
+        popover = page.locator(".driver-popover")
+
+        # tenta algumas vezes porque o tutorial pode renderizar com atraso
+        for tentativa in range(3):
+            # espera um pouco para o DOM estabilizar
+            await asyncio.sleep(0.6)
+
+            # se não existir nada, sai
+            if await btn_close.count() == 0:
+                return False
+
+            # se existe mas não está visível, dá uma chance dele aparecer
+            try:
+                await btn_close.first.wait_for(state="visible", timeout=2500)
+            except:
+                # se não ficou visível nessa tentativa, tenta novamente
+                continue
+
+            # settle time “com calma”
+            await asyncio.sleep(1.2)
+
+            # clica no X
+            try:
+                await btn_close.first.hover()
+                await asyncio.sleep(0.2)
+                await btn_close.first.click(force=True, timeout=3000)
+            except:
+                # fallback JS
+                try:
+                    await page.evaluate(
+                        """() => {
+                            const btn = document.querySelector('button.driver-popover-close-btn');
+                            if (btn) btn.click();
+                        }"""
+                    )
+                except:
+                    pass
+
+            # aguarda sumir
+            try:
+                await popover.first.wait_for(state="hidden", timeout=6000)
+            except:
+                # se não deu para validar pelo popover, valida pela ausência do botão
+                try:
+                    await btn_close.first.wait_for(state="hidden", timeout=4000)
+                except:
+                    pass
+
+            print(f"🛑 Tutorial Driver.js fechado. {('Motivo: ' + motivo) if motivo else ''}")
+            return True
+
+        return False
+
+    except Exception as e:
+        print(f"ℹ️ Erro ao fechar tutorial Driver.js: {e}")
+        return False
 
 # ===================== FUNÇÃO DE LIMPEZA ÚNICA ===================== #
 async def verificar_bloqueios_unico(page):
     """
-    Tenta fechar o tutorial Driver.js APENAS UMA VEZ por sessão.
+    Tenta fechar o tutorial Driver.js APENAS UMA VEZ por sessão (na primeira busca).
     """
     global bloqueios_removidos
-    
-    if not bloqueios_removidos:
-        print("🛡️ Verificando bloqueios (Primeira vez na Sky)...")
-        try:
-            # Espera 3 segundos para o popup aparecer
-            await asyncio.sleep(3)
-            
-            btn_fechar = page.locator(".driver-popover-close-btn")
-            
-            # Verifica se está visível
-            if await btn_fechar.count() > 0 and await btn_fechar.is_visible():
-                print("🛑 Pop-up detectado! Clicando no X...")
-                await btn_fechar.click()
-                await asyncio.sleep(1) 
-                print("✅ Pop-up fechado.")
-            else:
-                print("👍 Nenhum pop-up apareceu.")
-                
-            bloqueios_removidos = True
-            
-        except Exception as e:
-            print(f"ℹ️ Erro ao tentar fechar bloqueio: {e}")
+
+    if bloqueios_removidos:
+        return
+
+    print("🛡️ Verificando bloqueios (Primeira vez na Pellegrino)...")
+
+    # espera inicial maior para dar tempo do driver montar
+    await asyncio.sleep(2.5)
+
+    fechado = await fechar_driver_tutorial(page, motivo="primeira verificação")
+    if not fechado:
+        print("👍 Nenhum tutorial ativo (ou já fechado).")
+
+    bloqueios_removidos = True
 
 # ===================== NAVEGAÇÃO E BUSCA ===================== #
 async def buscar_produto(page, codigo):
     """Digita o código no campo #search-prod"""
     try:
-        # Seletor do campo de busca
         selector_busca = "#search-prod"
-        
         await page.wait_for_selector(selector_busca, state="visible", timeout=20000)
-        
+
         campo = page.locator(selector_busca)
         await campo.click()
         await page.keyboard.press("Control+A")
         await page.keyboard.press("Backspace")
-        
+
         # Digita e pesquisa
         await campo.fill(str(codigo))
-        await asyncio.sleep(0.5)
-        
+        await asyncio.sleep(0.6)
+
         print(f"⌛ Pesquisando {codigo}...")
         await page.keyboard.press("Enter")
-        
-        # --- AÇÃO: FECHAR O POP-UP (SÓ NA PRIMEIRA VEZ) ---
+
+        # ✅ Fecha tutorial (primeira vez com mais “paciência”)
         await verificar_bloqueios_unico(page)
-        
-        # Espera a tabela carregar
+
+        # ✅ E fecha novamente após a pesquisa (porque você disse que pode reaparecer)
+        # Com um pequeno delay extra para permitir renderização do popover
+        await asyncio.sleep(1.0)
+        await fechar_driver_tutorial(page, motivo="pós-pesquisa")
+
+        # Espera a tabela carregar (se vier resultado)
         try:
             await page.wait_for_selector("table tbody tr.odd, table tbody tr.even", timeout=8000)
         except:
-            pass 
-            
+            pass
+
     except Exception as e:
         print(f"❌ Erro na busca: {e}")
 
 # ===================== EXTRAÇÃO DOS DADOS ===================== #
 async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1):
-    
-    # Verifica se tem linha na tabela (odd ou even)
     linha_selector = "table tbody tr.odd, table tbody tr.even"
-    
+
     if await page.locator(linha_selector).count() == 0:
         print(f"❌ {codigo_solicitado} não encontrado (Tabela vazia).")
         return {
             "codigo": codigo_solicitado, "nome": None, "marca": None, "imagem": None,
             "preco": "R$ 0,00", "preco_num": 0.0, "preco_formatado": "R$ 0,00",
             "valor_total": 0.0, "valor_total_formatado": "R$ 0,00",
-            "uf": "SC", # Sky/Pellegrino geralmente é SC/PR/SP
+            "uf": "RJ",
             "qtdSolicitada": quantidade_solicitada, "qtdDisponivel": 0,
             "podeComprar": False, "disponivel": False, "status": "Não encontrado",
             "regioes": []
         }
 
-    # Pega a PRIMEIRA linha visível
     tr = page.locator(linha_selector).first
-    
+
     try:
-        # --- EXTRAÇÃO ---
-        
-        # Nome
-        # HTML: <span class="d-block font-weight-bold font-size-h6-sm mb-0">Amortecedor Diant</span>
         nome_element = tr.locator("span.font-weight-bold.font-size-h6-sm")
         nome_text = (await nome_element.inner_text()).strip()
-        
-        # Marca
-        # HTML: <span class="d-block nowrap text-truncate font-weight-light w-125px">NAKATA</span>
+
         marca_element = tr.locator("span.nowrap.text-truncate.font-weight-light")
         marca_text = (await marca_element.inner_text()).strip()
 
-        # Código
-        # HTML: <span ... class="... procedencia">HG 33013</span>
         cod_element = tr.locator("span.procedencia")
         if await cod_element.count() > 0:
             codigo_fab = (await cod_element.inner_text()).strip()
         else:
             codigo_fab = codigo_solicitado
 
-        # Imagem
         img_element = tr.locator("div.symbol-label img")
         link_img = await img_element.get_attribute("src")
         if link_img and not link_img.startswith("http"):
             link_img = "https://compreonline.pellegrino.com.br" + link_img
 
-        # Preço
-        # HTML: <span ... class="catalogo-preco ..."> ... R$ 255,63</span>
-        # Às vezes tem "DE: ...", pegamos o texto todo e o clean_price pega o último valor
         preco_element = tr.locator("span.catalogo-preco")
         preco_raw = (await preco_element.inner_text()).strip()
-        
-        # Se tiver preço antigo riscado, queremos o preço novo (geralmente o último ou maior destaque)
-        # O clean_price pega números. Se houver dois preços, pode ser confuso.
-        # Vamos tentar pegar especificamente o preço verde ou destacado se existir
+
         try:
             preco_destaque = tr.locator("span.catalogo-preco .text-green")
             if await preco_destaque.count() > 0:
                 preco_raw = await preco_destaque.inner_text()
-        except: pass
-        
+        except:
+            pass
+
         preco_num = clean_price(preco_raw)
-        
-        # Disponibilidade
+
         input_qtd = tr.locator("input.vit-qtde-table")
         tem_estoque = await input_qtd.count() > 0 and preco_num > 0
         qtd_disponivel = 1.0 if tem_estoque else 0.0
@@ -160,12 +206,11 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
         print(f"⚠ Erro na extração da linha: {e}")
         return None
 
-    # --- CONSOLIDAÇÃO ---
     valor_total = preco_num * quantidade_solicitada
     pode_comprar = tem_estoque
 
     regiao_sc = {
-        "uf": "SC",
+        "uf": "RJ",
         "preco": preco_raw,
         "preco_num": preco_num,
         "preco_formatado": format_brl(preco_num),
@@ -188,7 +233,7 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
         "preco_formatado": format_brl(preco_num),
         "valor_total": valor_total,
         "valor_total_formatado": format_brl(valor_total),
-        "uf": "SC",
+        "uf": "RJ",
         "qtdSolicitada": quantidade_solicitada,
         "qtdDisponivel": qtd_disponivel,
         "podeComprar": pode_comprar,
@@ -197,7 +242,7 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
         "status": "Disponível" if tem_estoque else "Indisponível",
         "regioes": [regiao_sc]
     }
-    
+
     print(f"✅ SUCESSO SKY: {codigo_fab} | {format_brl(preco_num)} | {marca_text}")
     return item_formatado
 
@@ -216,9 +261,9 @@ def preparar_dados_finais(lista_itens):
 async def processar_lista_produtos_sequencial14(page, lista_produtos):
     global bloqueios_removidos
     bloqueios_removidos = False
-    
+
     itens_extraidos = []
-    
+
     if not lista_produtos:
         print("⚠️ Lista vazia. Usando teste padrão.")
         lista_produtos = [{"codigo": "HG 33013", "quantidade": 1}]
@@ -228,17 +273,22 @@ async def processar_lista_produtos_sequencial14(page, lista_produtos):
     for idx, item in enumerate(lista_produtos):
         codigo = item["codigo"]
         qtd = item.get("quantidade", 1)
-        
-        print(f"\n📦 [{idx+1}/{len(lista_produtos)}] Sky -> Buscando: {codigo}")
-        
+
+        print(f"\n📦 [{idx+1}/{len(lista_produtos)}] Pellegrino -> Buscando: {codigo}")
+
         try:
             await buscar_produto(page, codigo)
+
+            # ✅ redundância: se o tutorial aparecer durante o carregamento da tabela, fecha novamente
+            await asyncio.sleep(0.8)
+            await fechar_driver_tutorial(page, motivo="antes da extração")
+
             resultado = await extrair_dados_produto(page, codigo, qtd)
-            
+
             if resultado:
                 itens_extraidos.append(resultado)
-            
-            await asyncio.sleep(1) 
+
+            await asyncio.sleep(1)
 
         except Exception as e:
             print(f"❌ Erro crítico no loop F14: {e}")
@@ -247,7 +297,7 @@ async def processar_lista_produtos_sequencial14(page, lista_produtos):
     # SALVAMENTO
     if itens_extraidos:
         validos = [r for r in itens_extraidos if r and r.get("status") != "Não encontrado"]
-        
+
         if validos:
             if salvar_lote_postgres:
                 print(f"⏳ Salvando {len(validos)} itens Sky no banco...")
@@ -259,5 +309,5 @@ async def processar_lista_produtos_sequencial14(page, lista_produtos):
                 print("ℹ️ Banco não configurado.")
         else:
             print("⚠️ Nada encontrado para salvar.")
-    
+
     return itens_extraidos

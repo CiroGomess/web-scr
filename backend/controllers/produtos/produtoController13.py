@@ -49,21 +49,22 @@ def preparar_dados_finais(lista_itens):
 
 
 # ===================== NOVO: TRATAMENTO MODAL SWEETALERT2 ===================== #
+# ===================== NOVO: TRATAMENTO MODAL SWEETALERT2 ===================== #
 async def fechar_modal_sem_resultados(page) -> bool:
     """
     Fecha o modal SweetAlert2 quando a busca não retorna resultados.
+    Agora com delay (1.9s) antes de clicar no OK, para evitar clique "instantâneo".
     Retorna True se encontrou e fechou o modal, False caso contrário.
     """
     popup = page.locator(".swal2-popup.swal2-modal")
     ok_btn = page.locator("button.swal2-confirm.swal2-styled")
 
     try:
-        # tenta detectar o popup rapidamente
+        # Detecta o popup rapidamente
         await popup.wait_for(state="visible", timeout=600)
     except Exception:
         return False
 
-    # Se o popup apareceu, garante que é o "Aviso" e fecha
     try:
         titulo = ""
         msg = ""
@@ -78,11 +79,28 @@ async def fechar_modal_sem_resultados(page) -> bool:
         except Exception:
             pass
 
-        # clica no OK
+        # ✅ Aguarda 1.9s antes de interagir (evita "instantâneo")
+        await asyncio.sleep(1.9)
+
+        # Garante que o botão ainda está lá e clicável
         try:
+            await ok_btn.wait_for(state="visible", timeout=3000)
+        except Exception:
+            # se sumiu sozinho nesse meio tempo, considera fechado
+            try:
+                await popup.wait_for(state="hidden", timeout=1500)
+                print(f"⚠️ Modal SweetAlert sumiu sozinho. Título: '{titulo}' | Msg: '{msg}'")
+                return True
+            except Exception:
+                return True
+
+        # ✅ Clique "humano": hover -> pequeno delay -> click
+        try:
+            await ok_btn.hover()
+            await asyncio.sleep(0.2)
             await ok_btn.click(timeout=3000)
         except Exception:
-            # fallback: força click via JS se necessário
+            # fallback: força click via JS
             try:
                 await page.evaluate(
                     """() => {
@@ -93,9 +111,9 @@ async def fechar_modal_sem_resultados(page) -> bool:
             except Exception:
                 pass
 
-        # espera o popup sumir
+        # Espera o popup sumir
         try:
-            await popup.wait_for(state="hidden", timeout=5000)
+            await popup.wait_for(state="hidden", timeout=7000)
         except Exception:
             pass
 
@@ -105,7 +123,6 @@ async def fechar_modal_sem_resultados(page) -> bool:
     except Exception as e:
         print(f"⚠️ Erro ao tratar modal SweetAlert2: {e}")
         return True
-
 
 # ===================== EXTRAÇÃO DE DADOS ===================== #
 async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1):

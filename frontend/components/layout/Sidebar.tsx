@@ -19,12 +19,12 @@ import logo from "../../assets/logo.png";
 
 const drawerWidth = 260; // Largura um pouco mais compacta e elegante
 
-// Definição de cores baseada no seu #3731A0
+// Definição de cores baseada no seu #225DA9
 const colors = {
-  primary: "#3731A0",
+  primary: "#225DA9",
   primaryLight: "#EEEDF9", // Um lilás bem clarinho para fundo do active
   text: "#475569", // Cinza profissional (Slate)
-  textActive: "#3731A0",
+  textActive: "#225DA9",
 };
 
 const menuItems = [

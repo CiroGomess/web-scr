@@ -15,6 +15,8 @@ USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36"
 ]
 
+HEADLESS = True 
+
 async def human_type(page, selector, text):
     """Simula uma digitação humana com variações de velocidade"""
     try:
@@ -39,7 +41,7 @@ async def login_sama_bypass(p):
     ]
 
     browser = await p.chromium.launch(
-        headless=False, # Headless False ajuda a passar por proteções
+        headless=HEADLESS, # Headless False ajuda a passar por proteções
         args=args,
         ignore_default_args=["--enable-automation"] 
     )

@@ -1,13 +1,18 @@
 # services/db_saver.py
 import psycopg2
 from configs.db import get_connection
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 def salvar_lote_postgres(dados_lote):
     """
     Salva lote + itens no PostgreSQL.
-    Regra: antes de inserir item, busca por codigo_produto:
+
+    Regra: antes de inserir item, busca por (fornecedor + codigo_produto) usando JOIN:
       - se existir, atualiza o item (não recadastra)
       - se não existir, insere novo
+
+    OBS: Não depende de coluna "fornecedor" em itens_processados (usa lote_id -> processamentos_lotes.id).
     """
     conn = None
     try:
@@ -15,7 +20,6 @@ def salvar_lote_postgres(dados_lote):
         conn = get_connection()
         cursor = conn.cursor()
 
-        # Fallback para evitar erro caso seu payload esteja com typo
         fornecedor = dados_lote.get("fornecedor") or dados_lote.get("fornecedror")
 
         # 1) Inserir o LOTE e pegar o ID gerado
@@ -31,15 +35,17 @@ def salvar_lote_postgres(dados_lote):
         ))
         lote_id = cursor.fetchone()[0]
 
-        # 2) Buscar item existente pelo codigo_produto
+        # 2) Buscar item existente pelo (fornecedor + codigo_produto) via JOIN no lote
         sql_busca_item = """
-            SELECT id
-            FROM itens_processados
-            WHERE codigo_produto = %s
+            SELECT ip.id
+            FROM itens_processados ip
+            JOIN processamentos_lotes pl ON pl.id = ip.lote_id
+            WHERE pl.fornecedor = %s
+              AND ip.codigo_produto = %s
             LIMIT 1;
         """
 
-        # 3) INSERT do item (quando não existe)
+        # 3) INSERT do item (quando não existe) - SEM coluna fornecedor em itens_processados
         sql_item_insert = """
             INSERT INTO itens_processados
             (lote_id, codigo_produto, nome_produto, marca, imagem_url,
@@ -84,12 +90,10 @@ def salvar_lote_postgres(dados_lote):
         for item in dados_lote["itens"]:
             codigo = item["codigo"]
 
-            # Verifica se já existe pelo codigo_produto
-            cursor.execute(sql_busca_item, (codigo,))
+            cursor.execute(sql_busca_item, (fornecedor, codigo))
             row = cursor.fetchone()
 
             if row:
-                # Já existe -> atualiza
                 item_existente_id = row[0]
                 cursor.execute(sql_item_update, (
                     lote_id,
@@ -107,7 +111,6 @@ def salvar_lote_postgres(dados_lote):
                 ))
                 item_id = cursor.fetchone()[0]
             else:
-                # Não existe -> insere
                 cursor.execute(sql_item_insert, (
                     lote_id,
                     codigo,
@@ -151,18 +154,74 @@ def salvar_lote_postgres(dados_lote):
             conn.close()
 
 
-def limpar_banco_processamento():
-    """
-    Limpa somente as tabelas do pipeline de processamento, antes de processar um novo documento.
-    - Zera: itens_detalhes_regionais, itens_processados, processamentos_lotes
-    - Reseta (mantém a linha): controle_ultimo_processamento (id=1)
-    """
+def atualizar_ultimo_processamento(data_obj=None):
+  
+  
+
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
 
-        # TRUNCATE nas tabelas principais (ordem e CASCADE evitam erro de FK)
+        # Se não passou data, usa NOW() direto no SQL
+        if data_obj is None:
+            sql = """
+                INSERT INTO controle_ultimo_processamento (id, ultima_data_processamento, atualizado_em)
+                VALUES (1, NOW(), NOW())
+                ON CONFLICT (id) DO UPDATE
+                SET ultima_data_processamento = EXCLUDED.ultima_data_processamento,
+                    atualizado_em = NOW();
+            """
+            cursor.execute(sql)
+            conn.commit()
+            return True
+
+        # Se passou datetime, garante timezone
+        if isinstance(data_obj, datetime):
+            if data_obj.tzinfo is None:
+                data_obj = data_obj.replace(tzinfo=ZoneInfo("America/Fortaleza"))
+        else:
+            # Se veio algo diferente de datetime, cai para NOW()
+            sql = """
+                INSERT INTO controle_ultimo_processamento (id, ultima_data_processamento, atualizado_em)
+                VALUES (1, NOW(), NOW())
+                ON CONFLICT (id) DO UPDATE
+                SET ultima_data_processamento = EXCLUDED.ultima_data_processamento,
+                    atualizado_em = NOW();
+            """
+            cursor.execute(sql)
+            conn.commit()
+            return True
+
+        sql = """
+            INSERT INTO controle_ultimo_processamento (id, ultima_data_processamento, atualizado_em)
+            VALUES (1, %s, NOW())
+            ON CONFLICT (id) DO UPDATE
+            SET ultima_data_processamento = EXCLUDED.ultima_data_processamento,
+                atualizado_em = NOW();
+        """
+        cursor.execute(sql, (data_obj,))
+        conn.commit()
+        return True
+
+    except Exception as e:
+        print(f"❌ Erro ao atualizar controle_ultimo_processamento: {e}")
+        if conn:
+            conn.rollback()
+        return False
+
+    finally:
+        if conn:
+            conn.close()
+
+
+
+def limpar_banco_processamento():
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
         cursor.execute("""
             TRUNCATE TABLE
                 itens_detalhes_regionais,
@@ -171,13 +230,12 @@ def limpar_banco_processamento():
             RESTART IDENTITY CASCADE;
         """)
 
-        # Em vez de truncar a tabela de controle (para não depender de reinserção),
-        # apenas reseta o campo. Garante que exista o registro id=1.
         cursor.execute("""
-            INSERT INTO controle_ultimo_processamento (id, ultima_data_processamento)
-            VALUES (1, NULL)
+            INSERT INTO controle_ultimo_processamento (id, ultima_data_processamento, atualizado_em)
+            VALUES (1, TIMESTAMPTZ '1970-01-01 00:00:00-03', NOW())
             ON CONFLICT (id) DO UPDATE
-            SET ultima_data_processamento = NULL;
+            SET ultima_data_processamento = EXCLUDED.ultima_data_processamento,
+                atualizado_em = NOW();
         """)
 
         conn.commit()

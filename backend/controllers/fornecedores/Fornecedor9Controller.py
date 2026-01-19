@@ -14,7 +14,7 @@ USER_AGENTS = [
 ]
 
 
-HEADLESS = False 
+HEADLESS = True 
 
 # ===================== LOGIN SOLROOM ===================== #
 

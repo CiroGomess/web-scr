@@ -9,11 +9,12 @@ def _brl(value: float) -> str:
     return f"R$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def _is_pai(codigo: str) -> bool:
-    return bool(codigo) and ("." not in codigo)
-
-
 def _codigo_pai(codigo: str) -> str:
+    """
+    Regra:
+    - Se tiver '.', considera pai = antes do ponto (ex: '14354.3' -> '14354')
+    - Caso contrário, o próprio código é o pai.
+    """
     if not codigo:
         return ""
     if "." in codigo:
@@ -27,11 +28,16 @@ def comparar_precos_entre_fornecedores():
         conn = get_connection()
         cursor = conn.cursor()
 
+        # ============================================================================
+        # 🧠 QUERY INTELIGENTE COM AGREGAÇÃO JSON
+        # ============================================================================
+        # Adicionado ip.marca no SELECT e no GROUP BY
         query = """
             SELECT 
                 ip.codigo_produto,
                 ip.nome_produto,
                 ip.imagem_url,
+                ip.marca,
                 pl.fornecedor,
                 ip.preco_unitario,
                 ip.qtd_disponivel,
@@ -50,30 +56,35 @@ def comparar_precos_entre_fornecedores():
             JOIN processamentos_lotes pl ON ip.lote_id = pl.id
             LEFT JOIN itens_detalhes_regionais idr ON ip.id = idr.item_id
             WHERE ip.preco_unitario > 0
-            GROUP BY ip.id, pl.id, ip.codigo_produto, ip.nome_produto, ip.imagem_url, pl.fornecedor, ip.preco_unitario, ip.qtd_disponivel, pl.data_processamento
+            GROUP BY ip.id, pl.id, ip.codigo_produto, ip.nome_produto, ip.imagem_url, ip.marca, pl.fornecedor, ip.preco_unitario, ip.qtd_disponivel, pl.data_processamento
             ORDER BY ip.codigo_produto, pl.data_processamento DESC;
         """
 
         cursor.execute(query)
         resultados = cursor.fetchall()
 
-        produtos_map = {}
+        # ============================================================================
+        # 1) Monta o mapa "flat" por código exato
+        # ============================================================================
+        itens_por_codigo = {}
 
         for row in resultados:
             codigo = row[0]
             nome = row[1]
             imagem = row[2]
-            fornecedor = row[3]
-            preco = float(row[4]) if row[4] is not None else 0.0
-            estoque = row[5]
-            data = row[6]
-            regioes_raw = row[7]
+            marca = row[3]       # ✅ Novo campo Marca
+            fornecedor = row[4]  # Índices deslocados +1
+            preco = float(row[5]) if row[5] is not None else 0.0
+            estoque = row[6]
+            data = row[7]        
+            regioes_raw = row[8] 
 
             if preco <= 0:
                 continue
 
             data_formatada = data.strftime("%d/%m/%Y") if data else ""
 
+            # Processa e formata os preços das regiões para o padrão BRL
             regioes_formatadas = []
             if regioes_raw:
                 for reg in regioes_raw:
@@ -85,20 +96,20 @@ def comparar_precos_entre_fornecedores():
                         "estoque": reg.get("estoque"),
                     })
 
-            if codigo not in produtos_map:
-                produtos_map[codigo] = {
+            # Inicializa o item no mapa se não existir
+            if codigo not in itens_por_codigo:
+                itens_por_codigo[codigo] = {
                     "codigo": codigo,
                     "nome": nome,
                     "imagem": imagem,
+                    "marca": marca,  # ✅ Armazena a marca
                     "melhor_preco": float("inf"),
                     "fornecedor_vencedor": None,
-                    "ofertas": [],
-                    # ✅ NOVO: chave sempre existe (compatibilidade)
-                    "variacoes": []
+                    "ofertas": []
                 }
 
-            # Evita duplicidade de fornecedor (mantém o mais recente por conta do ORDER BY data_processamento DESC)
-            fornecedores_existentes = {o["fornecedor"] for o in produtos_map[codigo]["ofertas"]}
+            # Evita duplicidade de fornecedor (mantém o mais recente)
+            fornecedores_existentes = {o["fornecedor"] for o in itens_por_codigo[codigo]["ofertas"]}
             if fornecedor in fornecedores_existentes:
                 continue
 
@@ -111,58 +122,115 @@ def comparar_precos_entre_fornecedores():
                 "regioes": regioes_formatadas
             }
 
-            produtos_map[codigo]["ofertas"].append(oferta)
+            itens_por_codigo[codigo]["ofertas"].append(oferta)
 
-            if preco < produtos_map[codigo]["melhor_preco"]:
-                produtos_map[codigo]["melhor_preco"] = preco
-                produtos_map[codigo]["fornecedor_vencedor"] = fornecedor
+            # Define vencedor (menor preço)
+            if preco < itens_por_codigo[codigo]["melhor_preco"]:
+                itens_por_codigo[codigo]["melhor_preco"] = preco
+                itens_por_codigo[codigo]["fornecedor_vencedor"] = fornecedor
 
-        # Normalização final por item (como era antes)
-        lista_comparada = []
-        for cod, dados in produtos_map.items():
+        # Normaliza (formatos e ordenação interna)
+        for cod, dados in itens_por_codigo.items():
             melhor_val = dados["melhor_preco"]
             if melhor_val == float("inf"):
                 melhor_val = 0.0
-
-            dados["melhor_preco"] = float(melhor_val)
-            dados["melhor_preco_formatado"] = _brl(float(melhor_val))
+            dados["melhor_preco"] = melhor_val
+            dados["melhor_preco_formatado"] = _brl(melhor_val)
             dados["ofertas"].sort(key=lambda x: x["preco"])
 
-            # (variacoes permanece, vai ser preenchido depois só no pai)
-            lista_comparada.append(dados)
+        # ============================================================================
+        # 2) Agrupa por código pai e coloca variações dentro
+        # ============================================================================
+        grupos_por_pai = {}
+
+        for codigo, item in itens_por_codigo.items():
+            pai = _codigo_pai(codigo)
+
+            if pai not in grupos_por_pai:
+                grupos_por_pai[pai] = {
+                    "codigo": pai,
+                    "nome": None,
+                    "imagem": None,
+                    "marca": None, # ✅ Campo marca no grupo
+                    "tem_item_pai": False,
+                    "item_pai": None, 
+                    "variacoes": [],
+                    "melhor_preco": float("inf"),
+                    "melhor_preco_formatado": _brl(0.0),
+                    "fornecedor_vencedor": None,
+                }
+
+            if codigo == pai:
+                # É o pai real
+                grupos_por_pai[pai]["tem_item_pai"] = True
+                grupos_por_pai[pai]["item_pai"] = item
+                grupos_por_pai[pai]["nome"] = item.get("nome")
+                grupos_por_pai[pai]["imagem"] = item.get("imagem")
+                grupos_por_pai[pai]["marca"] = item.get("marca") # ✅ Pega marca do pai real
+            else:
+                # É variação
+                grupos_por_pai[pai]["variacoes"].append(item)
+                
+                # Fallback de nome/imagem/marca se o grupo ainda estiver vazio (pai virtual)
+                if not grupos_por_pai[pai]["nome"]:
+                    grupos_por_pai[pai]["nome"] = item.get("nome")
+                if not grupos_por_pai[pai]["imagem"]:
+                    grupos_por_pai[pai]["imagem"] = item.get("imagem")
+                if not grupos_por_pai[pai]["marca"]:
+                    grupos_por_pai[pai]["marca"] = item.get("marca") # ✅ Fallback da marca
 
         # ============================================================================
-        # ✅ NOVO: Preencher variacoes APENAS dentro do PAI, sem mudar o retorno "flat"
+        # 3) LÓGICA DE PROMOÇÃO: VARIAÇÃO ÚNICA VIRA PRINCIPAL
         # ============================================================================
-        # cria índice por código para inserir objetos completos nas variações
-        idx_por_codigo = {p["codigo"]: p for p in lista_comparada}
+        for pai_key in list(grupos_por_pai.keys()):
+            grupo = grupos_por_pai[pai_key]
 
-        # mapeia pai -> lista de variações (objetos completos)
-        variacoes_por_pai = {}
-        for codigo, item in idx_por_codigo.items():
-            if "." in codigo:
-                pai = _codigo_pai(codigo)
-                variacoes_por_pai.setdefault(pai, []).append(item)
+            # SE não tem pai real (é virtual) E tem apenas 1 variação
+            if not grupo["tem_item_pai"] and len(grupo["variacoes"]) == 1:
+                unica_variacao = grupo["variacoes"][0]
 
-        # injeta as variações dentro do item pai, mantendo o pai como destaque
-        for pai_codigo, variacoes in variacoes_por_pai.items():
-            pai_item = idx_por_codigo.get(pai_codigo)
-            if not pai_item:
-                # Se o pai NÃO existir no retorno atual, não inventa item novo (mantém "do jeito que estava").
-                # Se você quiser criar "pai virtual", eu ajusto.
-                continue
-
-            # ordena variações pelo melhor preço (ou por código, se preferir)
-            variacoes.sort(key=lambda x: float(x.get("melhor_preco") or 0.0))
-
-            # garante que variações não carreguem variações dentro (evita recursão)
-            for v in variacoes:
-                v["variacoes"] = []
-
-            pai_item["variacoes"] = variacoes
+                # Promove os dados da variação para o nível do grupo
+                grupo["codigo"] = unica_variacao["codigo"] 
+                grupo["nome"] = unica_variacao["nome"]
+                grupo["imagem"] = unica_variacao["imagem"]
+                grupo["marca"] = unica_variacao["marca"] # ✅ Marca promovida
+                
+                # Coloca a variação no slot 'item_pai'
+                grupo["item_pai"] = unica_variacao
+                
+                # Esvazia a lista de variações
+                grupo["variacoes"] = []
+                grupo["tem_item_pai"] = False
 
         # ============================================================================
-        # ✅ Buscar a última data de processamento (tabela de controle)
+        # 4) Calcula melhor preço do grupo
+        # ============================================================================
+        for pai, grupo in grupos_por_pai.items():
+            candidatos = []
+
+            if grupo["item_pai"]:
+                candidatos.append(grupo["item_pai"])
+
+            candidatos.extend(grupo["variacoes"])
+
+            for item in candidatos:
+                mp = float(item.get("melhor_preco") or 0.0)
+                if mp > 0 and mp < grupo["melhor_preco"]:
+                    grupo["melhor_preco"] = mp
+                    grupo["fornecedor_vencedor"] = item.get("fornecedor_vencedor")
+
+            if grupo["melhor_preco"] == float("inf"):
+                grupo["melhor_preco"] = 0.0
+
+            grupo["melhor_preco_formatado"] = _brl(grupo["melhor_preco"])
+            grupo["variacoes"].sort(key=lambda x: float(x.get("melhor_preco") or 0.0))
+
+        # Lista final
+        lista_comparada = list(grupos_por_pai.values())
+        lista_comparada.sort(key=lambda g: (g["codigo"] or ""))
+
+        # ============================================================================
+        # 5) Metadados finais
         # ============================================================================
         cursor.execute("""
             SELECT ultima_data_processamento
@@ -178,7 +246,6 @@ def comparar_precos_entre_fornecedores():
         if row_last and row_last[0]:
             dt = row_last[0]
             br_tz = ZoneInfo("America/Fortaleza")
-
             if getattr(dt, "tzinfo", None) is not None and dt.tzinfo is not None:
                 dt_br = dt.astimezone(br_tz)
             else:
@@ -186,9 +253,6 @@ def comparar_precos_entre_fornecedores():
 
             ultima_data_br_formatada = dt_br.strftime("%d/%m/%Y %H:%M:%S")
             ultima_data_br_iso = dt_br.isoformat()
-
-        # mantém ordenação original (por código e data já veio do SQL; aqui não mexo além do sort opcional)
-        lista_comparada.sort(key=lambda x: (x.get("codigo") or ""))
 
         return {
             "success": True,

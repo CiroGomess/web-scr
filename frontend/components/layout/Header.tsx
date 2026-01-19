@@ -7,7 +7,7 @@ import NotificationsIcon from "@mui/icons-material/Notifications";
 import ShoppingCartIcon from "@mui/icons-material/ShoppingCart"; // Ícone novo
 import { useCart } from "../../contexts/CartContext"; // Importe o hook
 
-const brandColor = "#3731A0";
+const brandColor = "#225DA9";
 
 export default function Header() {
   const router = useRouter();

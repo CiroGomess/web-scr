@@ -1,5 +1,6 @@
 # runner_carrinho.py
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Tuple
+import asyncio
 from playwright.async_api import async_playwright
 
 # LOGINs
@@ -36,88 +37,37 @@ from controllers.addCarrinho.jahu import processar_lista_produtos_jahu
 from controllers.addCarrinho.skypecas import processar_lista_produtos_skypecas
 from controllers.addCarrinho.pellegrino import processar_lista_produtos_pellegrino
 from controllers.addCarrinho.furacao import processar_lista_produtos_furacao
-from controllers.addCarrinho.odapel import processar_lista_produtos_odapel  
+from controllers.addCarrinho.odapel import processar_lista_produtos_odapel
 
 
 FORNECEDORES_CARRINHO = {
-    "portalcomdip": {
-        "login": login_portalcomdip,
-        "add_to_cart": adicionar_itens_ao_carrinho_portalcomdip,
-    },
-    "rmp": {
-        "login": login_rmp,
-        "add_to_cart": adicionar_itens_ao_carrinho_rmp,
-    },
-    "roles": {
-        "login": login_roles,
-        "add_to_cart": processar_lista_produtos_roles,
-    },
-    "acaraujo": {
-        "login": login_acaraujo,
-        "add_to_cart": processar_lista_produtos_acaraujo,
-    },
-    "gb": {
-        "login": login_fornecedor4,
-        "add_to_cart": processar_lista_produtos_gb,
-    },
-    "laguna": {
-        "login": login_laguna_bypass,
-        "add_to_cart": processar_lista_produtos_laguna,
-    },
-    "sama": {
-        "login": login_sama_bypass,
-        "add_to_cart": processar_lista_produtos_sama,
-    },
-    "solroom": {
-        "login": login_solroom,
-        "add_to_cart": processar_lista_produtos_solroom,
-    },
-    "suportematriz": {
-        "login": login_matriz_bypass,
-        "add_to_cart": processar_lista_produtos_suportematriz,
-    },
-    "dpk": {
-        "login": login_dpk_bypass,
-        "add_to_cart": processar_lista_produtos_dpk,
-    },
-    "takao": {
-        "login": login_takao_bypass,
-        "add_to_cart": processar_lista_produtos_takao,
-    },
+    "portalcomdip": {"login": login_portalcomdip, "add_to_cart": adicionar_itens_ao_carrinho_portalcomdip},
+    "rmp": {"login": login_rmp, "add_to_cart": adicionar_itens_ao_carrinho_rmp},
+    "roles": {"login": login_roles, "add_to_cart": processar_lista_produtos_roles},
+    "acaraujo": {"login": login_acaraujo, "add_to_cart": processar_lista_produtos_acaraujo},
+    "gb": {"login": login_fornecedor4, "add_to_cart": processar_lista_produtos_gb},
+    "laguna": {"login": login_laguna_bypass, "add_to_cart": processar_lista_produtos_laguna},
+    "sama": {"login": login_sama_bypass, "add_to_cart": processar_lista_produtos_sama},
+    "solroom": {"login": login_solroom, "add_to_cart": processar_lista_produtos_solroom},
+    "suportematriz": {"login": login_matriz_bypass, "add_to_cart": processar_lista_produtos_suportematriz},
+    "dpk": {"login": login_dpk_bypass, "add_to_cart": processar_lista_produtos_dpk},
+    "takao": {"login": login_takao_bypass, "add_to_cart": processar_lista_produtos_takao},
 
-    # NOVOS
-    "pellegrino": {  # <- Fornecedor 14
-        "login": login_sky_bypass,
-        "add_to_cart": processar_lista_produtos_pellegrino,
-    },
-    "furacao": {  # <- Fornecedor 16
-        "login": login_furacao_bypass,
-        "add_to_cart": processar_lista_produtos_furacao,
-    },
-    "odapel": {  # <- Fornecedor 17 (PLS Web / Odapel)
-        "login": login_pls_bypass,
-        "add_to_cart": processar_lista_produtos_odapel,
-    },
+    "pellegrino": {"login": login_sky_bypass, "add_to_cart": processar_lista_produtos_pellegrino},
+    "furacao": {"login": login_furacao_bypass, "add_to_cart": processar_lista_produtos_furacao},
+    "odapel": {"login": login_pls_bypass, "add_to_cart": processar_lista_produtos_odapel},
 
-    "jahu": {
-        "login": login_jahu,
-        "add_to_cart": processar_lista_produtos_jahu,
-    },
-    "skypecas": {
-        "login": login_skypecas,
-        "add_to_cart": processar_lista_produtos_skypecas,
-    },
+    "jahu": {"login": login_jahu, "add_to_cart": processar_lista_produtos_jahu},
+    "skypecas": {"login": login_skypecas, "add_to_cart": processar_lista_produtos_skypecas},
 }
 
 # (Opcional) aliases que o front pode mandar
 ALIASES = {
-    # RMP
     "fornecedor 7 (rmp)": "rmp",
     "fornecedor7": "rmp",
     "loja.rmp.com.br": "rmp",
     "rmp": "rmp",
 
-    # ROLES
     "fornecedor2": "roles",
     "fornecedor 2 (roles)": "roles",
     "compreonline roles": "roles",
@@ -125,7 +75,6 @@ ALIASES = {
     "compreonline.roles.com.br": "roles",
     "roles": "roles",
 
-    # ACARAUJO
     "fornecedor3": "acaraujo",
     "fornecedor 3 (acaraujo)": "acaraujo",
     "acaraujo": "acaraujo",
@@ -134,7 +83,6 @@ ALIASES = {
     "https://portal.acaraujo.com.br": "acaraujo",
     "https://portal.acaraujo.com.br/": "acaraujo",
 
-    # GB
     "fornecedor4": "gb",
     "fornecedor 4 (gb)": "gb",
     "gb": "gb",
@@ -144,7 +92,6 @@ ALIASES = {
     "https://ecommerce.gb.com.br": "gb",
     "https://ecommerce.gb.com.br/": "gb",
 
-    # LAGUNA
     "fornecedor6": "laguna",
     "fornecedor 6 (laguna)": "laguna",
     "laguna": "laguna",
@@ -154,7 +101,6 @@ ALIASES = {
     "https://compreonline.lagunaautopecas.com.br": "laguna",
     "https://compreonline.lagunaautopecas.com.br/": "laguna",
 
-    # SAMA
     "fornecedor8": "sama",
     "fornecedor 8 (sama)": "sama",
     "sama": "sama",
@@ -164,7 +110,6 @@ ALIASES = {
     "https://compreonline.samaautopecas.com.br": "sama",
     "https://compreonline.samaautopecas.com.br/": "sama",
 
-    # SOLROOM
     "fornecedor9": "solroom",
     "fornecedor 9 (solroom)": "solroom",
     "solroom": "solroom",
@@ -174,7 +119,6 @@ ALIASES = {
     "https://solroom.com.br": "solroom",
     "https://solroom.com.br/": "solroom",
 
-    # SUPORTE MATRIZ
     "fornecedor10": "suportematriz",
     "fornecedor 10 (suporte matriz)": "suportematriz",
     "suporte matriz": "suportematriz",
@@ -184,17 +128,14 @@ ALIASES = {
     "http://suportematriz.ddns.net:5006": "suportematriz",
     "http://suportematriz.ddns.net:5006/": "suportematriz",
 
-    # DPK
     "fornecedor11": "dpk",
     "fornecedor 11 (dpk)": "dpk",
     "dpk": "dpk",
 
-    # TAKAO
     "fornecedor12": "takao",
     "fornecedor 12 (takao)": "takao",
     "takao": "takao",
 
-    # PELLEGRINO / SKY (Fornecedor 14)
     "fornecedor14": "pellegrino",
     "fornecedor 14 (pellegrino)": "pellegrino",
     "pellegrino": "pellegrino",
@@ -203,16 +144,16 @@ ALIASES = {
     "https://compreonline.pellegrino.com.br": "pellegrino",
     "https://compreonline.pellegrino.com.br/": "pellegrino",
 
-    # FURAÇÃO (Fornecedor 16)
     "fornecedor16": "furacao",
     "fornecedor 16 (furacao)": "furacao",
+    "furacao": "furacao",
+    "furacão": "furacao",
     "furacao": "furacao",
     "furação": "furacao",
     "vendas.furacao.com.br": "furacao",
     "https://vendas.furacao.com.br": "furacao",
     "https://vendas.furacao.com.br/": "furacao",
 
-    # ODAPEL / PLS (Fornecedor 17) <- NOVO
     "fornecedor17": "odapel",
     "fornecedor 17 (odapel)": "odapel",
     "fornecedor 17 (pls)": "odapel",
@@ -222,14 +163,12 @@ ALIASES = {
     "pls web": "odapel",
     "/movimentacao": "odapel",
 
-    # JAHU
     "fornecedor5": "jahu",
     "fornecedor 5 (jahu)": "jahu",
     "jahu": "jahu",
     "b2b jahu": "jahu",
     "b2b.jahu.com.br": "jahu",
 
-    # SKYPEÇAS
     "fornecedor13": "skypecas",
     "fornecedor 13 (skypecas)": "skypecas",
     "skypecas": "skypecas",
@@ -241,12 +180,97 @@ ALIASES = {
 }
 
 
+# ============================================================
+# ✅ TESTE DE LOGIN (mesmo padrão do runner.py)
+# ============================================================
+async def testar_login(login_func, playwright_instance, timeout_segundos=60):
+    try:
+        browser, context, page = await asyncio.wait_for(
+            login_func(playwright_instance),
+            timeout=timeout_segundos,
+        )
+
+        if not browser or not context or not page:
+            return (False, browser, context, page, "Login não retornou browser/context/page válidos")
+
+        if page.is_closed():
+            return (False, browser, context, page, "Page veio fechada após login")
+
+        return (True, browser, context, page, "")
+
+    except asyncio.TimeoutError:
+        return (False, None, None, None, f"Timeout no login ({timeout_segundos}s)")
+    except Exception as e:
+        return (False, None, None, None, str(e))
+
+
+# ============================================================
+# ✅ EXECUTA 1 FORNECEDOR (carrinho) com SEMAPHORE
+# ============================================================
+async def executar_fornecedor_carrinho(fornecedor_key: str, itens: List[Dict[str, Any]], playwright_instance, sem: asyncio.Semaphore):
+    async with sem:
+        browser = None
+        nome_log = fornecedor_key
+
+        try:
+            if fornecedor_key not in FORNECEDORES_CARRINHO:
+                return {
+                    "success": False,
+                    "fornecedor": fornecedor_key,
+                    "error": f"Fornecedor '{fornecedor_key}' não mapeado.",
+                }
+
+            login_func = FORNECEDORES_CARRINHO[fornecedor_key]["login"]
+            add_func = FORNECEDORES_CARRINHO[fornecedor_key]["add_to_cart"]
+
+            print(f"\n--- 🛒 Iniciando carrinho: {nome_log} ---")
+
+            ok, browser, context, page, erro_login = await testar_login(login_func, playwright_instance, timeout_segundos=60)
+
+            if not ok:
+                print(f"❌ Falha no login de {nome_log}: {erro_login}")
+                return {
+                    "success": False,
+                    "fornecedor": fornecedor_key,
+                    "error": erro_login,
+                }
+
+            print(f"✅ Login OK: {nome_log}. Adicionando itens...")
+
+            resultado = await add_func(page, itens)
+
+            return {
+                "success": bool((resultado or {}).get("success")),
+                "fornecedor": fornecedor_key,
+                "detalhes": resultado,
+            }
+
+        except Exception as e:
+            print(f"🔥 Erro no carrinho {nome_log}: {e}")
+            return {"success": False, "fornecedor": fornecedor_key, "error": str(e)}
+
+        finally:
+            try:
+                if browser:
+                    await browser.close()
+                    print(f"🔒 Navegador fechado (carrinho): {nome_log}")
+            except Exception:
+                pass
+
+
+def _normalizar_fornecedor_key(fornecedor: str) -> str:
+    fk = (fornecedor or "").strip().lower()
+    return ALIASES.get(fk, fk)
+
+
+# ============================================================
+# ✅ MODO ANTIGO (1 fornecedor) - mantém compatibilidade
+# ============================================================
 async def executar_automacao_carrinho(
     fornecedor: str,
     itens: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    fornecedor_key = (fornecedor or "").strip().lower()
-    fornecedor_key = ALIASES.get(fornecedor_key, fornecedor_key)
+    fornecedor_key = _normalizar_fornecedor_key(fornecedor)
 
     if fornecedor_key not in FORNECEDORES_CARRINHO:
         return {
@@ -257,36 +281,59 @@ async def executar_automacao_carrinho(
         }
 
     async with async_playwright() as p:
-        browser = None
-        context = None
-        page = None
+        sem = asyncio.Semaphore(1)
+        return await executar_fornecedor_carrinho(fornecedor_key, itens, p, sem)
 
-        try:
-            login_func = FORNECEDORES_CARRINHO[fornecedor_key]["login"]
-            browser, context, page = await login_func(p)
 
-            if not page:
-                return {
-                    "success": False,
-                    "error": f"Falha no login do fornecedor '{fornecedor_key}'.",
-                    "fornecedor": fornecedor_key,
-                }
+# ============================================================
+# ✅ NOVO: EXECUTA VÁRIOS FORNECEDORES com concorrência=5
+# ============================================================
+async def executar_automacao_carrinho_em_lotes(
+    fornecedores: List[str],
+    itens: List[Dict[str, Any]],
+    concorrencia_fornecedores: int = 5,
+) -> Dict[str, Any]:
+    # normaliza + remove duplicados mantendo ordem
+    fornecedores_keys = []
+    seen = set()
+    invalidos = []
 
-            add_func = FORNECEDORES_CARRINHO[fornecedor_key]["add_to_cart"]
-            resultado = await add_func(page, itens)
+    for f in (fornecedores or []):
+        fk = _normalizar_fornecedor_key(f)
+        if fk not in FORNECEDORES_CARRINHO:
+            invalidos.append({"fornecedor_recebido": f, "fornecedor_key": fk})
+            continue
+        if fk in seen:
+            continue
+        seen.add(fk)
+        fornecedores_keys.append(fk)
 
-            return {
-                "success": bool((resultado or {}).get("success")),
-                "fornecedor": fornecedor_key,
-                "detalhes": resultado,
-            }
+    if not fornecedores_keys:
+        return {
+            "success": False,
+            "error": "Nenhum fornecedor válido para processar.",
+            "invalidos": invalidos,
+            "resultados": [],
+        }
 
-        except Exception as e:
-            return {"success": False, "error": str(e), "fornecedor": fornecedor_key}
+    sem = asyncio.Semaphore(concorrencia_fornecedores)
 
-        finally:
-            try:
-                if browser:
-                    await browser.close()
-            except Exception:
-                pass
+    async with async_playwright() as p:
+        tarefas = [
+            executar_fornecedor_carrinho(fk, itens, p, sem)
+            for fk in fornecedores_keys
+        ]
+        resultados = await asyncio.gather(*tarefas)
+
+    ok = sum(1 for r in resultados if r.get("success"))
+    falha = len(resultados) - ok
+
+    return {
+        "success": True,
+        "concorrencia": concorrencia_fornecedores,
+        "fornecedores_total": len(resultados),
+        "ok": ok,
+        "falha": falha,
+        "invalidos": invalidos,
+        "resultados": resultados,
+    }

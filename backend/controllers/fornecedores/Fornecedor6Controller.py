@@ -13,6 +13,8 @@ USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36"
 ]
 
+HEADLESS = True 
+
 async def human_type(page, selector, text):
     """Simula uma digitação humana"""
     try:
@@ -36,7 +38,7 @@ async def login_laguna_bypass(p):
     ]
 
     browser = await p.chromium.launch(
-        headless=False, 
+        headless= HEADLESS, 
         args=args,
         ignore_default_args=["--enable-automation"] 
     )

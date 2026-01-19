@@ -8,6 +8,7 @@ export type CartItem = {
   codigo: string;
   nome: string;
   imagem: string;
+  marca?: string; // ✅ NOVO CAMPO: Adicionado para salvar a marca
   fornecedor: string;
   preco: number;
   quantidade: number;
@@ -25,6 +26,7 @@ type CartContextType = {
   cart: CartItem[];
   addToCart: (item: CartItem) => void;
   removeFromCart: (uid: string) => void;
+  updateQuantity: (uid: string, quantidade: number) => void; // ✅ NOVA FUNÇÃO
   clearCart: () => void;
   cartCount: number;
 };
@@ -73,7 +75,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       if (exists) {
         return prev.map((item) =>
           item.uid === newItem.uid
-            ? { ...item, quantidade: (item.quantidade || 0) + 1 }
+            ? { ...item, quantidade: (item.quantidade || 0) + (newItem.quantidade || 1) }
             : item
         );
       }
@@ -92,6 +94,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setCart((prev) => prev.filter((item) => item.uid !== uid));
   };
 
+  // ✅ NOVA FUNÇÃO: Atualiza a quantidade diretamente (para o input manual)
+  const updateQuantity = (uid: string, quantidade: number) => {
+    setCart((prev) =>
+      prev.map((item) =>
+        // Math.max(1, ...) garante que nunca fique 0 ou negativo
+        item.uid === uid ? { ...item, quantidade: Math.max(1, quantidade) } : item
+      )
+    );
+  };
+
   const clearCart = () => {
     setCart([]);
   };
@@ -99,7 +111,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const cartCount = cart.reduce((acc, item) => acc + (item.quantidade || 0), 0);
 
   return (
-    <CartContext.Provider value={{ cart, addToCart, removeFromCart, clearCart, cartCount }}>
+    <CartContext.Provider
+      value={{ 
+        cart, 
+        addToCart, 
+        removeFromCart, 
+        updateQuantity, // ✅ Exportando a função
+        clearCart, 
+        cartCount 
+      }}
+    >
       {children}
     </CartContext.Provider>
   );
