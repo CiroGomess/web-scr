@@ -2,8 +2,8 @@ import axios, { AxiosError } from "axios";
 
 // 1. Criação da instância do Axios
 const api = axios.create({
-  // baseURL: "http://127.0.0.1:5000",
-  baseURL: "http://206.0.29.133/api",
+  baseURL: "http://127.0.0.1:5000",
+  // baseURL: "http://206.0.29.133/api",
   withCredentials: false,
 });
 

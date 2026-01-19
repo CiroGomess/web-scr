@@ -1,10 +1,9 @@
+# routes/userController.py
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 import bcrypt
-import psycopg2
-from configs.db import get_connection  # Assumindo que sua conexão vem daqui
+from configs.db import get_connection  # Agora retorna sqlite3 connection (websrc.db)
 
-# Cria o Blueprint
 user_bp = Blueprint('user_bp', __name__)
 
 # ========================================================
@@ -12,7 +11,7 @@ user_bp = Blueprint('user_bp', __name__)
 # ========================================================
 @user_bp.route('/auth/register', methods=['POST'])
 def register():
-    data = request.get_json()
+    data = request.get_json() or {}
     email = data.get('email')
     senha_plana = data.get('senha')
 
@@ -24,31 +23,32 @@ def register():
         conn = get_connection()
         cursor = conn.cursor()
 
-        # 1. Verifica se usuário já existe
-        cursor.execute("SELECT id FROM user_login WHERE email = %s", (email,))
+        # 1) Verifica se usuário já existe
+        cursor.execute("SELECT id FROM user_login WHERE email = ?", (email,))
         if cursor.fetchone():
             return jsonify({"message": "Usuário já cadastrado"}), 409
 
-        # 2. Criptografa a senha (Hash)
-        # Gera o salt e o hash
+        # 2) Criptografa a senha (Hash)
         salt = bcrypt.gensalt()
         senha_hash = bcrypt.hashpw(senha_plana.encode('utf-8'), salt).decode('utf-8')
 
-        # 3. Insere no banco
+        # 3) Insere no banco (SQLite não usa RETURNING por padrão)
         cursor.execute(
-            "INSERT INTO user_login (email, senha) VALUES (%s, %s) RETURNING id",
+            "INSERT INTO user_login (email, senha) VALUES (?, ?)",
             (email, senha_hash)
         )
-        user_id = cursor.fetchone()[0]
+        user_id = cursor.lastrowid
         conn.commit()
 
         return jsonify({"message": "Usuário criado com sucesso", "user_id": user_id}), 201
 
     except Exception as e:
-        if conn: conn.rollback()
+        if conn:
+            conn.rollback()
         return jsonify({"message": "Erro no servidor", "error": str(e)}), 500
     finally:
-        if conn: conn.close()
+        if conn:
+            conn.close()
 
 
 # ========================================================
@@ -56,69 +56,71 @@ def register():
 # ========================================================
 @user_bp.route('/auth/login', methods=['POST'])
 def login():
-    data = request.get_json()
+    data = request.get_json() or {}
     email = data.get('email')
     senha_plana = data.get('senha')
+
+    if not email or not senha_plana:
+        return jsonify({"message": "Email e senha são obrigatórios"}), 400
 
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
 
-        # 1. Busca usuário pelo email
-        cursor.execute("SELECT id, email, senha FROM user_login WHERE email = %s", (email,))
-        user = cursor.fetchone() # Retorna (id, email, senha_hash)
+        # 1) Busca usuário pelo email
+        cursor.execute("SELECT id, email, senha FROM user_login WHERE email = ?", (email,))
+        user = cursor.fetchone()
 
         if not user:
             return jsonify({"message": "Email ou senha incorretos"}), 401
 
-        user_id, user_email, user_senha_hash = user
+        # sqlite3.Row permite acessar por índice ou chave
+        user_id = user[0]
+        user_email = user[1]
+        user_senha_hash = user[2]
 
-        # 2. Verifica se a senha bate com o hash
+        # 2) Verifica senha
         if bcrypt.checkpw(senha_plana.encode('utf-8'), user_senha_hash.encode('utf-8')):
-            
-            # 3. Gera o Token JWT
-            # identity pode ser o ID ou o Email (o que você quiser recuperar depois)
             access_token = create_access_token(identity=str(user_id))
-            
             return jsonify({
                 "message": "Login realizado com sucesso",
                 "token": access_token,
                 "user": {"id": user_id, "email": user_email}
             }), 200
-        else:
-            return jsonify({"message": "Email ou senha incorretos"}), 401
+
+        return jsonify({"message": "Email ou senha incorretos"}), 401
 
     except Exception as e:
         return jsonify({"message": "Erro no servidor", "error": str(e)}), 500
     finally:
-        if conn: conn.close()
+        if conn:
+            conn.close()
 
 
 # ========================================================
 # 🛡️ ROTA PROTEGIDA: LISTAR USUÁRIOS (READ)
 # ========================================================
 @user_bp.route('/users', methods=['GET'])
-@jwt_required() # <--- Exige Token Válido
+@jwt_required()
 def get_users():
     conn = None
     try:
-        # Pega o ID do usuário que está fazendo a requisição (opcional, para logs)
-        current_user_id = get_jwt_identity()
+        _current_user_id = get_jwt_identity()
 
         conn = get_connection()
         cursor = conn.cursor()
 
-        # Traz id e email (nunca traga a senha, mesmo hash)
+        # Se sua tabela NÃO tiver created_at, remova do SELECT
         cursor.execute("SELECT id, email, created_at FROM user_login")
-        users = cursor.fetchall()
+        rows = cursor.fetchall()
 
         lista_users = []
-        for u in users:
+        for r in rows:
             lista_users.append({
-                "id": u[0],
-                "email": u[1],
-                "created_at": u[2]
+                "id": r[0],
+                "email": r[1],
+                "created_at": r[2]
             })
 
         return jsonify(lista_users), 200
@@ -126,7 +128,8 @@ def get_users():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
-        if conn: conn.close()
+        if conn:
+            conn.close()
 
 
 # ========================================================
@@ -140,7 +143,7 @@ def delete_user(id):
         conn = get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("DELETE FROM user_login WHERE id = %s", (id,))
+        cursor.execute("DELETE FROM user_login WHERE id = ?", (id,))
         conn.commit()
 
         if cursor.rowcount == 0:
@@ -149,7 +152,9 @@ def delete_user(id):
         return jsonify({"message": "Usuário deletado com sucesso"}), 200
 
     except Exception as e:
-        if conn: conn.rollback()
+        if conn:
+            conn.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
-        if conn: conn.close()
+        if conn:
+            conn.close()

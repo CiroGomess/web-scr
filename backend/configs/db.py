@@ -1,41 +1,33 @@
+# configs/db.py
 import os
-import psycopg2
+import sqlite3
 from dotenv import load_dotenv
 
-# Carrega variáveis do .env
 load_dotenv()
 
-DB_HOST = os.getenv("DB_HOST")
-DB_PORT = os.getenv("DB_PORT")
-DB_NAME = os.getenv("DB_NAME")
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_SSLMODE = os.getenv("DB_SSLMODE", "disable")
+SQLITE_PATH = os.getenv("SQLITE_PATH", "./configs/websrc.db")
 
 def get_connection():
-    return psycopg2.connect(
-        host=DB_HOST,
-        port=DB_PORT,
-        database=DB_NAME,
-        user=DB_USER,
-        password=DB_PASSWORD,
-        sslmode=DB_SSLMODE,
-        options="-c client_encoding=UTF8"
-    )
+    conn = sqlite3.connect(SQLITE_PATH, timeout=30, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+
+    # Boas práticas
+    conn.execute("PRAGMA foreign_keys = ON;")
+    conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
+    conn.execute("PRAGMA busy_timeout = 30000;")
+
+    return conn
 
 
 if __name__ == "__main__":
     try:
         conn = get_connection()
-        print("Conexao com PostgreSQL realizada com sucesso")
-
-        cursor = conn.cursor()
-        cursor.execute("SELECT version();")
-        print(cursor.fetchone())
-
-        cursor.close()
+        print("Conexao com SQLite realizada com sucesso")
+        cur = conn.cursor()
+        cur.execute("SELECT sqlite_version();")
+        print(cur.fetchone()[0])
         conn.close()
-
     except Exception as e:
-        print("Erro ao conectar no PostgreSQL")
-        print(str(e).encode("utf-8", errors="ignore").decode("utf-8"))
+        print("Erro ao conectar no SQLite")
+        print(str(e))

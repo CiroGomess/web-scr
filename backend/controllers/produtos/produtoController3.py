@@ -4,10 +4,10 @@ from datetime import datetime
 
 # ===================== IMPORTAÇÃO DO SERVIÇO DE BANCO ===================== #
 try:
-    from services.db_saver import salvar_lote_postgres
+    from services.db_saver import salvar_lote_sqlite
 except ImportError:
     print("⚠️ Aviso: 'services.db_saver' não encontrado. O salvamento no banco será pulado.")
-    salvar_lote_postgres = None
+    salvar_lote_sqlite = None
 
 # ===================== AUXILIARES DE FORMATAÇÃO ===================== #
 def clean_price(preco_str):
@@ -218,9 +218,9 @@ async def processar_lista_produtos_sequencial3(page, lista_produtos):
             dados_completos = preparar_dados_finais(validos)
 
             # 3. Salva no PostgreSQL
-            if salvar_lote_postgres:
+            if salvar_lote_sqlite:
                 print("⏳ Enviando dados para o PostgreSQL...")
-                sucesso = salvar_lote_postgres(dados_completos)
+                sucesso = salvar_lote_sqlite(dados_completos)
                 if sucesso:
                     print("✅ Dados salvos no banco com sucesso!")
                 else:
