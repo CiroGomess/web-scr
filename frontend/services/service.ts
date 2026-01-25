@@ -1,11 +1,39 @@
 import axios, { AxiosError } from "axios";
 
 // 1. Criação da instância do Axios
+// Sempre usa URL relativa - o Nginx faz o proxy reverso
 const api = axios.create({
-  // baseURL: "http://127.0.0.1:5000",
-  baseURL: "http://206.0.29.133/api",
+  baseURL: "/api",
   withCredentials: false,
+  timeout: 21600000, // 6 horas em milissegundos (21600 * 1000)
 });
+
+// Interceptor para garantir que sempre use o protocolo correto
+api.interceptors.request.use(
+  (config) => {
+    if (typeof window !== "undefined") {
+      // Se a página está em HTTPS, garante que a URL seja relativa
+      if (window.location.protocol === "https:") {
+        // Remove qualquer baseURL absoluta HTTP e usa relativa
+        if (config.url?.startsWith("http://")) {
+          // Se a URL completa for passada, extrai apenas o path
+          try {
+            const urlObj = new URL(config.url);
+            config.url = urlObj.pathname + urlObj.search;
+          } catch (e) {
+            // Se não for URL válida, mantém como está
+          }
+        }
+        // Garante que baseURL seja relativa
+        config.baseURL = "/api";
+      }
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
 
 // 2. INTERCEPTOR DE REQUISIÇÃO (Injeta o Token)
 // Antes de qualquer requisição sair, esse código roda.

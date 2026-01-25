@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import services from "../../services/service";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
@@ -15,6 +15,9 @@ export default function UploadPage() {
 
   const [processing, setProcessing] = useState(false);
   const [processMessage, setProcessMessage] = useState("Processando dados, aguarde...");
+  
+  // Ref para manter referência do handler beforeunload
+  const beforeUnloadHandlerRef = useRef<((event: BeforeUnloadEvent) => void) | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
@@ -50,21 +53,72 @@ export default function UploadPage() {
     if (processing) return;
 
     setProcessing(true);
-    setProcessMessage("Processando dados, aguarde...");
+    setProcessMessage("Iniciando processamento...");
 
     try {
       const result = await services("/processar", { method: "POST" });
 
-      // Se o seu services() não retorna success, ajuste aqui conforme seu padrão
-      if (result?.success === false) {
-        throw new Error(result?.data?.message || "Falha ao processar");
+      // Verifica se a requisição foi aceita (202) ou se houve erro
+      if (result?.status === 202 || (result?.success && result?.data?.status === "processing")) {
+        // Processamento iniciado em background - inicia polling
+        setProcessMessage("Processamento iniciado. Acompanhe o progresso abaixo...");
+        
+        // Polling para verificar status do processamento
+        const checkStatus = async () => {
+          try {
+            const statusResult = await services("/processar/status", { method: "GET" });
+            
+            if (statusResult?.success && statusResult?.data?.status === "completed") {
+              // Processamento concluído!
+              setProcessMessage("Processamento concluído com sucesso! Redirecionando...");
+              
+              setTimeout(() => {
+                // Remove handler beforeunload ANTES de setar processing como false
+                if (beforeUnloadHandlerRef.current) {
+                  window.removeEventListener("beforeunload", beforeUnloadHandlerRef.current);
+                  beforeUnloadHandlerRef.current = null;
+                }
+                window.onbeforeunload = null;
+                
+                // Agora seta processing como false (isso também remove o handler via useEffect)
+                setProcessing(false);
+                
+                // Delay para garantir que o useEffect executou e tudo foi limpo
+                setTimeout(() => {
+                  // Verifica novamente antes de redirecionar (garantia extra)
+                  window.onbeforeunload = null;
+                  // Usa replace ao invés de href para evitar trigger do beforeunload
+                  window.location.replace("/consulta");
+                }, 300);
+              }, 2000);
+            } else if (statusResult?.data?.status === "processing") {
+              // Ainda processando - continua verificando
+              setTimeout(checkStatus, 5000); // Verifica a cada 5 segundos
+            } else if (statusResult?.data?.status === "error") {
+              // Erro no status
+              setProcessMessage("Erro ao verificar status do processamento.");
+              setTimeout(() => setProcessing(false), 3000);
+            }
+          } catch (err: any) {
+            console.error("Erro ao verificar status:", err);
+            // Continua tentando mesmo em caso de erro temporário
+            setTimeout(checkStatus, 10000); // Tenta novamente em 10 segundos
+          }
+        };
+        
+        // Inicia o polling após 3 segundos (dá tempo para o processamento iniciar)
+        setTimeout(checkStatus, 3000);
+        
+      } else if (result?.success === false) {
+        throw new Error(result?.data?.message || result?.data?.error || "Falha ao iniciar processamento");
+      } else {
+        // Resposta inesperada, mas assume sucesso
+        setProcessMessage("Processamento iniciado com sucesso!");
+        setTimeout(() => setProcessing(false), 3000);
       }
-
-      setProcessMessage("Processamento concluído com sucesso!");
-      setTimeout(() => setProcessing(false), 800);
     } catch (err: any) {
-      setProcessMessage("Ocorreu um erro no processamento.");
-      setTimeout(() => setProcessing(false), 1200);
+      setProcessMessage("Ocorreu um erro ao iniciar o processamento.");
+      setTimeout(() => setProcessing(false), 2000);
       alert(err?.message || "Erro ao processar dados");
     }
   };
@@ -73,20 +127,32 @@ export default function UploadPage() {
   useEffect(() => {
     if (!processing) {
       document.body.style.overflow = "";
+      // Remove handler beforeunload quando processing é false
+      if (beforeUnloadHandlerRef.current) {
+        window.removeEventListener("beforeunload", beforeUnloadHandlerRef.current);
+        beforeUnloadHandlerRef.current = null;
+      }
+      window.onbeforeunload = null;
       return;
     }
 
     document.body.style.overflow = "hidden";
 
+    // Cria o handler e armazena na ref
     const beforeUnloadHandler = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = "";
     };
-
+    
+    beforeUnloadHandlerRef.current = beforeUnloadHandler;
     window.addEventListener("beforeunload", beforeUnloadHandler);
 
     return () => {
-      window.removeEventListener("beforeunload", beforeUnloadHandler);
+      if (beforeUnloadHandlerRef.current) {
+        window.removeEventListener("beforeunload", beforeUnloadHandlerRef.current);
+        beforeUnloadHandlerRef.current = null;
+      }
+      window.onbeforeunload = null;
       document.body.style.overflow = "";
     };
   }, [processing]);
@@ -98,10 +164,14 @@ export default function UploadPage() {
         open={processing}
         title="Processamento em andamento"
         message={processMessage}
+        onLogsUpdate={(logs, progresso) => {
+          // Callback opcional para atualizações de logs
+          // Pode ser usado para atualizar a mensagem baseada no progresso
+        }}
       />
 
-      <div className="flex justify-center items-start mt-16 px-4">
-        <div className="w-full max-w-xl bg-white rounded-2xl shadow-[0_12px_40px_rgba(0,0,0,0.12)] p-8 animate-fadeIn">
+      <div className="flex justify-center items-start mt-16 px-4 w-full max-w-full overflow-x-hidden">
+        <div className="w-full max-w-xl bg-white rounded-2xl shadow-[0_12px_40px_rgba(0,0,0,0.12)] p-6 md:p-8 animate-fadeIn">
           <h2 className="text-2xl font-semibold text-gray-900 text-center mb-6">
             Upload de Arquivo XLSX
           </h2>

@@ -614,15 +614,15 @@ export default function ComparativoPrecosPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 md:p-10 font-sans text-gray-800">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Comparativo de Preços</h1>
-            <p className="text-gray-500 mt-1">
+    <div className="w-full max-w-full overflow-x-hidden font-sans text-gray-800">
+      <div className="w-full space-y-6">
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 w-full overflow-hidden">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight break-words">Comparativo de Preços</h1>
+            <p className="text-gray-500 mt-1 flex flex-wrap items-center gap-2">
               Análise em tempo real.{" "}
               {dataLote && (
-                <span className="ml-2 bg-gray-100 px-2 py-0.5 rounded text-xs text-gray-600 font-medium border border-gray-200">
+                <span className="bg-gray-100 px-2 py-0.5 rounded text-xs text-gray-600 font-medium border border-gray-200 whitespace-nowrap">
                   Dados de: {dataLote}
                 </span>
               )}
@@ -630,26 +630,26 @@ export default function ComparativoPrecosPage() {
           </div>
           <button
             onClick={carregar}
-            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow-sm transition-all active:scale-95 flex items-center gap-2"
+            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow-sm transition-all active:scale-95 flex items-center gap-2 flex-shrink-0 whitespace-nowrap"
           >
             🔄 Atualizar Dados
           </button>
         </header>
 
         {dadosDesatualizados && (
-          <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <WarningAmberRounded className="text-amber-600 mt-0.5" />
-              <div>
+          <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 w-full overflow-hidden">
+            <div className="flex items-start gap-3 flex-1 min-w-0">
+              <WarningAmberRounded className="text-amber-600 mt-0.5 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
                 <h3 className="font-bold text-amber-800">Atenção: Dados Desatualizados</h3>
-                <p className="text-sm text-amber-700 mt-1">
+                <p className="text-sm text-amber-700 mt-1 break-words">
                   Os dados exibidos são do dia <strong>{dataLote}</strong>.
                 </p>
               </div>
             </div>
             <button
               onClick={() => router.push("/upload")}
-              className="whitespace-nowrap px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold rounded shadow-sm flex items-center gap-2"
+              className="whitespace-nowrap px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold rounded shadow-sm flex items-center gap-2 flex-shrink-0"
             >
               <CloudUploadOutlined fontSize="small" /> Fazer Upload Novo
             </button>
@@ -671,8 +671,8 @@ export default function ComparativoPrecosPage() {
           />
         </div>
 
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 items-center">
-          <div className="relative flex-1 w-full">
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 items-center w-full overflow-hidden">
+          <div className="relative flex-1 w-full min-w-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xl" />
             <input
               type="text"
@@ -682,7 +682,7 @@ export default function ComparativoPrecosPage() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <div className="relative w-full md:w-64">
+          <div className="relative w-full md:w-64 flex-shrink-0">
             <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
               <FilterAltOutlined className="text-gray-400 text-xl" />
             </div>
@@ -702,7 +702,7 @@ export default function ComparativoPrecosPage() {
               <ExpandMore className="text-gray-400" fontSize="small" />
             </div>
           </div>
-          <div className="flex items-center gap-2 text-sm text-gray-500 whitespace-nowrap px-2 border-l border-gray-100 pl-4">
+          <div className="flex items-center gap-2 text-sm text-gray-500 whitespace-nowrap px-2 border-l border-gray-100 pl-4 flex-shrink-0">
             <FilterList className="text-gray-400" /> <span>{produtosFiltrados.length} itens</span>
           </div>
         </div>
@@ -725,7 +725,7 @@ export default function ComparativoPrecosPage() {
               >
                 {/* HEADER DO CARD */}
                 <div
-                  className="p-5 flex flex-col md:flex-row items-center gap-6 cursor-pointer"
+                  className="p-5 flex flex-col md:flex-row items-center gap-4 md:gap-6 cursor-pointer w-full overflow-hidden"
                   onClick={() => setExpanded(isExpanded ? null : produto.codigo)}
                 >
                   <div className="flex-shrink-0 w-16 h-16 md:w-20 md:h-20 bg-gray-100 rounded-lg border border-gray-100 p-2 flex items-center justify-center relative">
@@ -778,12 +778,12 @@ export default function ComparativoPrecosPage() {
                     </div>
                   </div>
 
-                  <div className="text-center md:text-right min-w-[140px]">
+                  <div className="text-center md:text-right w-full md:w-auto md:min-w-[140px] flex-shrink-0">
                     <div className="text-xs text-gray-500 mb-1">Melhor Preço (Ref.)</div>
                     <div className="text-xl md:text-2xl font-bold text-emerald-600">
                       {displayItem.melhor_preco_formatado}
                     </div>
-                    <div className="text-xs font-medium text-indigo-600 mt-1 truncate max-w-[150px] mx-auto md:ml-auto">
+                    <div className="text-xs font-medium text-indigo-600 mt-1 truncate max-w-full md:max-w-[150px] mx-auto md:ml-auto">
                       {displayItem.fornecedor_vencedor}
                     </div>
                   </div>

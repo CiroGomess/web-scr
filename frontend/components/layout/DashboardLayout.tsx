@@ -59,13 +59,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           component="main"
           sx={{
             flexGrow: 1,
-            p: 3,
+            p: { xs: 2, sm: 3, md: 4 },
             overflowY: "auto",
             overflowX: "hidden",
             backgroundColor: "#F8FAFC",
+            width: "100%",
+            maxWidth: "100%",
           }}
         >
-          <Box sx={{ maxWidth: "1600px", mx: "auto", width: "100%" }}>
+          <Box 
+            sx={{ 
+              maxWidth: "1600px", 
+              mx: "auto", 
+              width: "100%",
+              px: { xs: 0, sm: 2 },
+              boxSizing: "border-box",
+            }}
+          >
              {children}
           </Box>
         </Box>
