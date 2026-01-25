@@ -11,7 +11,7 @@ USER_AGENTS = [
 ]
 
 
-HEADLESS = True 
+HEADLESS = False 
 
 # ===================== AUXILIAR: ACEITAR COOKIES ===================== #
 

@@ -12,8 +12,6 @@ except ImportError:
 # ===================== AUXILIARES ===================== #
 def clean_price(preco_str):
     if not preco_str: return 0.0
-    # Remove R$, espaços e caracteres não numéricos exceto vírgula e ponto
-    # Ex: "R$ 1.132,50" -> "1132.50"
     preco = re.sub(r'[^\d,]', '', preco_str)
     preco = preco.replace(",", ".")
     try: return float(preco)
@@ -25,7 +23,6 @@ def format_brl(valor):
 
 def clean_stock(stock_str):
     if not stock_str: return 0.0
-    # Se tiver "+100", remove o +
     stock = re.sub(r'[^\d]', '', stock_str)
     try: return float(stock)
     except: return 0.0
@@ -33,35 +30,36 @@ def clean_stock(stock_str):
 # ===================== BUSCA ===================== #
 async def buscar_produto(page, codigo):
     try:
-        # Seletor do campo de busca
         selector_busca = "input#inputSearch"
         
-        await page.wait_for_selector(selector_busca, state="visible", timeout=20000)
+        # TIMEOUT AUMENTADO (60s) - Site lento
+        await page.wait_for_selector(selector_busca, state="visible", timeout=60000)
         
         campo = page.locator(selector_busca)
         
-        # Limpa e Digita
+        # Limpa e Digita (garantindo que o campo limpou)
         await campo.click()
         await page.keyboard.press("Control+A")
         await page.keyboard.press("Backspace")
-        
-        await campo.fill(str(codigo))
         await asyncio.sleep(0.5)
         
-        # Pesquisa
+        await campo.fill(str(codigo))
+        await asyncio.sleep(1) # Pausa para o site reconhecer a digitação
+        
         print(f"⌛ Pesquisando {codigo}...")
         await page.keyboard.press("Enter")
         
         # --- ESPERA ESTRATÉGICA (SITE LENTO) ---
         print("⏳ Aguardando carregamento dos cards (Takao é lento)...")
         
-        # Espera o componente do card aparecer
+        # Espera o componente do card aparecer (AUMENTADO PARA 45s)
         try:
-            await page.wait_for_selector("app-card-produto-home", timeout=15000)
-            # Espera mais um pouco para o PREÇO renderizar (geralmente carrega depois do layout)
-            await asyncio.sleep(4) 
+            await page.wait_for_selector("app-card-produto-home", timeout=45000)
+            # Espera extra para renderização final dos preços
+            await asyncio.sleep(5) 
         except:
-            pass # Pode não ter encontrado nada
+            print("⚠️ Timeout aguardando cards (pode não ter resultados).")
+            pass 
             
     except Exception as e:
         print(f"❌ Erro na busca Takao: {e}")
@@ -69,16 +67,16 @@ async def buscar_produto(page, codigo):
 # ===================== EXTRAÇÃO ===================== #
 async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1):
     
-    # Seletor do componente CARD
     card_selector = "app-card-produto-home"
     
+    # Verifica rápido se tem card
     if await page.locator(card_selector).count() == 0:
-        print(f"❌ {codigo_solicitado} não encontrado.")
+        print(f"❌ {codigo_solicitado} não encontrado (Nenhum card visível).")
         return {
             "codigo": codigo_solicitado, "nome": None, "marca": None, "imagem": None,
             "preco": "R$ 0,00", "preco_num": 0.0, "preco_formatado": "R$ 0,00",
             "valor_total": 0.0, "valor_total_formatado": "R$ 0,00",
-            "uf": "RJ", # Takao tem várias filiais, assumindo padrão
+            "uf": "RJ", 
             "qtdSolicitada": quantidade_solicitada, "qtdDisponivel": 0,
             "podeComprar": False, "disponivel": False, "status": "Não encontrado",
             "regioes": []
@@ -90,68 +88,64 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
     try:
         # --- EXTRAÇÃO ---
         
-        # Nome/Modelo (Ex: JSCBR LR 30D)
-        # HTML: <span class="modelo"><b>JSCBR LR 30D </b></span>
+        # Nome/Modelo
         nome_element = card.locator("span.modelo b")
-        nome_text = (await nome_element.inner_text()).strip()
-        
-        # Descrição (Ex: Junta Completa...)
-        # HTML: <div class="descricao"> Junta Completa... </div>
+        # Timeout interno no locator caso o elemento demore a renderizar dentro do card
+        if await nome_element.count() > 0:
+            nome_text = (await nome_element.inner_text()).strip()
+        else:
+            nome_text = str(codigo_solicitado)
+
+        # Descrição
         try:
             desc_el = card.locator("div.descricao")
             descricao = (await desc_el.inner_text()).strip()
-            # Concatena nome + descrição para ficar mais completo
             nome_completo = f"{nome_text} - {descricao}"
         except:
             nome_completo = nome_text
 
-        # Código (Usa o nome/modelo extraído como código, pois na Takao é o SKU)
         codigo_fab = nome_text
-
-        # Marca (Takao é fabricante próprio, então geralmente é Takao)
         marca_text = "Takao"
 
         # Imagem
         img_element = card.locator("img.image")
-        link_img = await img_element.get_attribute("src")
-        # Se precisar corrigir URL
-        # if link_img and not link_img.startswith("http"): ...
+        link_img = None
+        if await img_element.count() > 0:
+            link_img = await img_element.get_attribute("src")
 
         # Preço
-        # HTML: <span class="preco"> R$ 1.132,50 ... </span>
-        # Tem vários preços (por filial), pegamos o primeiro visível
-        preco_element = card.locator("span.preco").first
-        preco_raw = (await preco_element.inner_text()).split("\n")[0].strip() # Remove texto da filial se vier junto
+        # Aumentei a tolerância para pegar o preço
+        preco_raw = "0,00"
+        try:
+            preco_element = card.locator("span.preco").first
+            await preco_element.wait_for(state="visible", timeout=5000)
+            text_p = await preco_element.inner_text()
+            preco_raw = text_p.split("\n")[0].strip()
+        except:
+            pass
+            
         preco_num = clean_price(preco_raw)
         
-        # Estoque (Total)
-        # O HTML da tabela de variações mostra colunas. A coluna "TOTAL" tem o valor.
-        # HTML: <div ... id="texto-total">TOTAL</div> ... <div ...> +100 </div>
-        # Vamos tentar pegar o valor da última coluna da linha da tabela
+        # Estoque
         qtd_disponivel = 0.0
         try:
-            # Pega a linha de valores da tabela
-            # A estrutura é complexa, mas o valor total costuma ser o último div da linha 'row' dentro de 'tabela-body'
             linha_valores = card.locator(".tabela-body .row").first
-            colunas = linha_valores.locator("div[class*='col-']")
-            
-            # O total geralmente é a penúltima ou última coluna antes do botão
-            # Vamos tentar pegar o texto que tem números ou "+100"
-            count = await colunas.count()
-            if count > 0:
-                # Tenta varrer as colunas de trás pra frente para achar o total
-                for i in range(count - 2, -1, -1): # Pula o botão (última)
-                    texto = await colunas.nth(i).inner_text()
-                    if texto.strip():
-                        val = clean_stock(texto)
-                        if val > 0:
-                            qtd_disponivel = val
-                            break
+            if await linha_valores.count() > 0:
+                colunas = linha_valores.locator("div[class*='col-']")
+                count = await colunas.count()
+                if count > 0:
+                    # Varrer de trás pra frente
+                    for i in range(count - 2, -1, -1):
+                        texto = await colunas.nth(i).inner_text()
+                        if texto.strip():
+                            val = clean_stock(texto)
+                            if val > 0:
+                                qtd_disponivel = val
+                                break
         except Exception as ex_stock:
-            print(f"⚠️ Erro ao ler estoque Takao: {ex_stock}")
+            print(f"⚠️ Erro ao ler estoque: {ex_stock}")
 
         # Disponibilidade
-        # Se tem botão "Adicionar" visível
         btn_add = card.locator("button.btn-adicionar")
         tem_estoque = await btn_add.is_visible() and (qtd_disponivel > 0 or preco_num > 0)
 
@@ -212,14 +206,35 @@ def preparar_dados_finais(lista_itens):
     }
 
 # ===================== MAIN LOOP ===================== #
-async def processar_lista_produtos_sequencial12(page, lista_produtos):
+async def processar_lista_produtos_sequencial12(login_data_ou_page, lista_produtos):
     itens_extraidos = []
     
+    # --- CORREÇÃO DO ERRO DE TUPLA ---
+    # Se receber (browser, context, page), pega só a page
+    if isinstance(login_data_ou_page, (tuple, list)) and len(login_data_ou_page) >= 3:
+        page = login_data_ou_page[2]
+    else:
+        page = login_data_ou_page
+
+    if not page:
+        print("❌ Erro: page inválida (não veio do login).")
+        return []
+    # ---------------------------------
+    
     if not lista_produtos:
-        print("⚠️ Lista vazia. Usando teste: JSCBR LR 30D")
-        lista_produtos = [{"codigo": "JSCBR LR 30D", "quantidade": 1}]
+        # Produto de teste padrão se vier vazio
+        lista_produtos = [{"codigo": "31968", "quantidade": 1}]
     elif isinstance(lista_produtos, str):
         lista_produtos = [{"codigo": lista_produtos, "quantidade": 1}]
+    elif isinstance(lista_produtos, list):
+         # Normaliza lista de strings para dicts
+        normalized = []
+        for item in lista_produtos:
+            if isinstance(item, str):
+                normalized.append({"codigo": item, "quantidade": 1})
+            elif isinstance(item, dict):
+                normalized.append(item)
+        lista_produtos = normalized
 
     for idx, item in enumerate(lista_produtos):
         codigo = item["codigo"]
@@ -229,16 +244,25 @@ async def processar_lista_produtos_sequencial12(page, lista_produtos):
         
         try:
             await buscar_produto(page, codigo)
+            
+            # Pequeno delay antes de extrair para garantir que o DOM estabilizou
+            await asyncio.sleep(2)
+            
             resultado = await extrair_dados_produto(page, codigo, qtd)
             
             if resultado:
                 itens_extraidos.append(resultado)
             
-            await asyncio.sleep(1.5) 
+            # Delay entre produtos para não travar o site lento
+            await asyncio.sleep(3) 
 
         except Exception as e:
             print(f"❌ Erro crítico no loop F12: {e}")
-            await page.reload(wait_until="networkidle")
+            try:
+                await page.reload(wait_until="domcontentloaded")
+                await asyncio.sleep(5)
+            except:
+                pass
 
     # SALVAMENTO
     if itens_extraidos:

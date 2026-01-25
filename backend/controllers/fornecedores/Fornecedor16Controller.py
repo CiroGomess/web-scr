@@ -16,7 +16,7 @@ USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36"
 ]
 
-HEADLESS = True 
+HEADLESS = False 
 
 async def human_type(page, selector, text):
     """Simula uma digitação humana"""
@@ -48,7 +48,7 @@ async def login_furacao_bypass(p):
 
     context = await browser.new_context(
         user_agent=random.choice(USER_AGENTS),
-        viewport={'width': 1366, 'height': 768},
+        viewport={'width': 1920, 'height': 768},
         locale="pt-BR",
         timezone_id="America/Sao_Paulo",
         java_script_enabled=True

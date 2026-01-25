@@ -12,7 +12,7 @@ except ImportError:
 # ===================== AUXILIARES ===================== #
 def clean_price(preco_str):
     if not preco_str: return 0.0
-    preco = re.sub(r'[^\d,]', '', preco_str)
+    preco = re.sub(r'[^\d,]', '', str(preco_str))
     preco = preco.replace(",", ".")
     try: return float(preco)
     except: return 0.0
@@ -23,104 +23,105 @@ def format_brl(valor):
 
 def clean_stock(stock_str):
     if not stock_str: return 0.0
-    stock = re.sub(r'[^\d]', '', stock_str)
+    stock = re.sub(r'[^\d]', '', str(stock_str))
     try: return float(stock)
     except: return 0.0
+
+# ===================== TRATAMENTO LOADING ===================== #
+async def verificar_e_recuperar_loading(page) -> bool:
+    try:
+        is_loading = await page.locator("#loading, .loading, .mat-progress-spinner, .spinner-border").is_visible(timeout=1000)
+        
+        if is_loading:
+            print("⚠️ LOADING TRAVADO! Recuperando...")
+            await page.reload()
+            try: await page.wait_for_load_state("networkidle", timeout=10000)
+            except: pass
+            print("⏳ Aguardando 4s pós-refresh...")
+            await asyncio.sleep(4)
+            return True
+    except Exception:
+        pass
+    return False
 
 # ===================== NAVEGAÇÃO E BUSCA ===================== #
 async def buscar_produto(page, codigo):
     """
-    Digita o código no campo 'Descrição' (formcontrolname='searchTerm')
-    e clica no botão 'Buscar'.
+    Retorna True se achou resultado (ou carregou a página de resultados).
+    Retorna False se deu TIMEOUT de 8 segundos.
     """
     try:
-        # 1. Localiza o input de Descrição
-        # Usamos o atributo específico do Angular
         selector_busca = "input[formcontrolname='searchTerm']"
-        
-        # Espera ele estar visível na tela
         await page.wait_for_selector(selector_busca, state="visible", timeout=20000)
         
         campo = page.locator(selector_busca)
-        
-        # Clica, Limpa e Digita
-        await campo.click()
+        await campo.click(force=True)
+        await asyncio.sleep(0.2)
         await page.keyboard.press("Control+A")
         await page.keyboard.press("Backspace")
         await campo.fill(str(codigo))
-        
         await asyncio.sleep(0.5)
         
-        # 2. Clica no botão BUSCAR
-        # O botão tem o texto "Buscar" e é mat-flat-button
         btn_buscar = page.locator("button.search-button:has-text('Buscar')")
-        
         print(f"⌛ Pesquisando {codigo}...")
         
         if await btn_buscar.is_visible():
-            await btn_buscar.click()
+            await btn_buscar.click(force=True)
         else:
-            # Fallback: Enter
             await page.keyboard.press("Enter")
         
-        # 3. Espera carregar os resultados
+        print("⏳ Aguardando resultados...")
+
+        # === AQUI ESTÁ A LÓGICA DE 8 SEGUNDOS ===
         try:
-            # Espera o card do produto aparecer
+            # Espera no MÁXIMO 8000ms (8s) pelo card do produto
             await page.wait_for_selector(".column-view-card", timeout=8000)
-        except:
-            pass 
+            # Se achou antes de 8s, segue o baile
+            await asyncio.sleep(1.5) # Pequeno delay para renderizar imagens
+            return True
             
-        await asyncio.sleep(2)
+        except Exception:
+            # Se estourou 8s e não apareceu o card
+            print(f"⚠️ Timeout de 8s excedido para {codigo}! Pulando...")
+            return False 
+        # ========================================
         
     except Exception as e:
         print(f"❌ Erro na busca DPK: {e}")
+        return False
 
 # ===================== EXTRAÇÃO DOS DADOS ===================== #
 async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1):
     
-    # Seletor do CARD DO PRODUTO (Baseado no seu HTML)
     card_selector = ".column-view-card"
     
+    # Se chegou aqui, teoricamente a busca achou algo ou a página carregou vazio
+    # Mas validamos de novo
     if await page.locator(card_selector).count() == 0:
-        print(f"❌ {codigo_solicitado} não encontrado.")
+        print(f"❌ {codigo_solicitado} não encontrado (Grid vazio).")
         return {
             "codigo": codigo_solicitado, "nome": None, "marca": None, "imagem": None,
             "preco": "R$ 0,00", "preco_num": 0.0, "preco_formatado": "R$ 0,00",
             "valor_total": 0.0, "valor_total_formatado": "R$ 0,00",
-            "uf": "RJ",
-            "qtdSolicitada": quantidade_solicitada, "qtdDisponivel": 0,
-            "podeComprar": False, "disponivel": False, "status": "Não encontrado",
-            "regioes": []
+            "uf": "RJ", "qtdSolicitada": quantidade_solicitada, "qtdDisponivel": 0,
+            "podeComprar": False, "disponivel": False, "status": "Não encontrado", "regioes": []
         }
 
-    # Pega o PRIMEIRO card
     card = page.locator(card_selector).first
     
     try:
-        # --- EXTRAÇÃO ---
-        
-        # Nome (Dentro de h2 a)
         nome_element = card.locator("h2 a")
         nome_text = (await nome_element.inner_text()).strip()
         
-        # Marca e Códigos
-        # Estão dentro de div.colum-card
-        
-        # Marca: Texto após "Fabricante:"
         marca_text = "N/A"
         try:
             marca_el = card.locator("strong:near(p:has-text('Fabricante:'))").first
-            # Alternativa se near não funcionar bem: Pegar p com texto e o next-sibling
             if await marca_el.count() == 0:
-                 # Tenta pegar pelo texto exato se a estrutura for fixa
-                 # O HTML mostra <p>Fabricante:</p><strong> MANN</strong>
                  marca_el = card.locator("p:has-text('Fabricante:') + strong")
-            
             if await marca_el.count() > 0:
                 marca_text = (await marca_el.inner_text()).strip()
         except: pass
 
-        # Código: Texto após "Cód do produto:" ou "Cód de Fábrica:"
         codigo_fab = codigo_solicitado
         try:
             cod_el = card.locator("p:has-text('Cód do produto:') + strong")
@@ -132,76 +133,57 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
                     codigo_fab = (await cod_fab.inner_text()).strip()
         except: pass
 
-        # Imagem
         img_element = card.locator("img[app-img]")
-        link_img = await img_element.get_attribute("src")
-        # Se precisar corrigir URL relativa
-        # if link_img and not link_img.startswith("http"): ...
+        try: link_img = await img_element.get_attribute("src")
+        except: link_img = None
 
-        # Preço
-        # HTML: <span class="cor-preco"> R$ 18,82 </span>
-        preco_element = card.locator("span.cor-preco")
-        preco_raw = (await preco_element.inner_text()).strip()
-        preco_num = clean_price(preco_raw)
+        try:
+            preco_element = card.locator("span.cor-preco")
+            preco_raw = (await preco_element.inner_text()).strip()
+            preco_num = clean_price(preco_raw)
+        except:
+            preco_raw = "0,00"; preco_num = 0.0
         
-        # Estoque
-        # HTML: <small class="cor-similar ..."> 6un. no estoque </small>
         qtd_disponivel = 0.0
         try:
             estoque_el = card.locator("small.cor-similar:has-text('estoque')")
             if await estoque_el.count() > 0:
-                texto_estoque = await estoque_el.inner_text() # " 6un. no estoque "
+                texto_estoque = await estoque_el.inner_text() 
                 qtd_disponivel = clean_stock(texto_estoque)
         except: pass
         
-        # Disponibilidade
-        # Verifica se botão Adicionar está habilitado/visível
-        btn_add = card.locator("button#adicionarCarrinhoBtn")
-        tem_estoque = await btn_add.is_visible() and qtd_disponivel > 0
+        tem_estoque = False
+        try:
+            btn_add = card.locator("button#adicionarCarrinhoBtn")
+            tem_estoque = await btn_add.is_visible() and qtd_disponivel > 0
+        except: pass
 
     except Exception as e:
         print(f"⚠ Erro na extração do card: {e}")
         return None
 
-    # --- CONSOLIDAÇÃO ---
     valor_total = preco_num * quantidade_solicitada
     pode_comprar = tem_estoque and (qtd_disponivel >= quantidade_solicitada)
 
     regiao_sp = {
-        "uf": "RJ",
-        "preco": preco_raw,
-        "preco_num": preco_num,
-        "preco_formatado": format_brl(preco_num),
-        "qtdSolicitada": quantidade_solicitada,
-        "qtdDisponivel": qtd_disponivel,
-        "valor_total": valor_total,
-        "valor_total_formatado": format_brl(valor_total),
-        "podeComprar": pode_comprar,
-        "mensagem": None if pode_comprar else "Estoque insuficiente",
-        "disponivel": tem_estoque
+        "uf": "RJ", "preco": preco_raw, "preco_num": preco_num,
+        "preco_formatado": format_brl(preco_num), "qtdSolicitada": quantidade_solicitada,
+        "qtdDisponivel": qtd_disponivel, "valor_total": valor_total,
+        "valor_total_formatado": format_brl(valor_total), "podeComprar": pode_comprar,
+        "mensagem": None if pode_comprar else "Estoque insuficiente", "disponivel": tem_estoque
     }
 
     item_formatado = {
-        "codigo": codigo_fab,
-        "nome": nome_text,
-        "marca": marca_text,
-        "imagem": link_img,
-        "preco": preco_raw,
-        "preco_num": preco_num,
-        "preco_formatado": format_brl(preco_num),
-        "valor_total": valor_total,
-        "valor_total_formatado": format_brl(valor_total),
-        "uf": "SP",
-        "qtdSolicitada": quantidade_solicitada,
-        "qtdDisponivel": qtd_disponivel,
-        "podeComprar": pode_comprar,
-        "mensagem": regiao_sp["mensagem"],
-        "disponivel": tem_estoque,
-        "status": "Disponível" if tem_estoque else "Indisponível",
+        "codigo": codigo_fab, "nome": nome_text, "marca": marca_text, "imagem": link_img,
+        "preco": preco_raw, "preco_num": preco_num, "preco_formatado": format_brl(preco_num),
+        "valor_total": valor_total, "valor_total_formatado": format_brl(valor_total),
+        "uf": "RJ", "qtdSolicitada": quantidade_solicitada, "qtdDisponivel": qtd_disponivel,
+        "podeComprar": pode_comprar, "mensagem": regiao_sp["mensagem"],
+        "disponivel": tem_estoque, "status": "Disponível" if tem_estoque else "Indisponível",
         "regioes": [regiao_sp]
     }
     
-    print(f"✅ SUCESSO: {codigo_fab} | {format_brl(preco_num)} | Estoque: {qtd_disponivel}")
+    print(f"✅ SUCESSO DPK: {codigo_fab} | {format_brl(preco_num)} | Estoque: {qtd_disponivel}")
     return item_formatado
 
 # ===================== DB PREPARER ===================== #
@@ -216,9 +198,21 @@ def preparar_dados_finais(lista_itens):
     }
 
 # ===================== MAIN LOOP ===================== #
-async def processar_lista_produtos_sequencial11(page, lista_produtos):
+async def processar_lista_produtos_sequencial11(login_data_ou_page, lista_produtos):
     itens_extraidos = []
     
+    if isinstance(login_data_ou_page, (tuple, list)):
+        if len(login_data_ou_page) >= 3:
+            page = login_data_ou_page[2]
+        else:
+            page = login_data_ou_page[-1]
+    else:
+        page = login_data_ou_page
+    
+    if not page or not hasattr(page, 'goto'):
+        print("❌ Erro: Objeto 'page' inválido recebido.")
+        return []
+
     if not lista_produtos:
         print("⚠️ Lista vazia. Usando teste: 84111")
         lista_produtos = [{"codigo": "84111", "quantidade": 1}]
@@ -231,33 +225,43 @@ async def processar_lista_produtos_sequencial11(page, lista_produtos):
         
         print(f"\n📦 [{idx+1}/{len(lista_produtos)}] DPK -> Buscando: {codigo}")
         
-        try:
-            await buscar_produto(page, codigo)
-            resultado = await extrair_dados_produto(page, codigo, qtd)
-            
-            if resultado:
-                itens_extraidos.append(resultado)
-            
-            await asyncio.sleep(1.5) 
+        while True:
+            try:
+                if await verificar_e_recuperar_loading(page): continue
 
-        except Exception as e:
-            print(f"❌ Erro crítico no loop F11: {e}")
-            await page.reload(wait_until="networkidle")
+                # 1. Realiza a busca
+                # Agora retorna TRUE se achou, ou FALSE se deu timeout de 8s
+                encontrou = await buscar_produto(page, codigo)
+                
+                # SE NÃO ENCONTROU EM 8 SEGUNDOS, SAI DO LOOP WHILE E VAI PRO PROXIMO ITEM (FOR)
+                if not encontrou:
+                    print("⏩ Pulei para o próximo item devido ao timeout.")
+                    break 
 
-    # SALVAMENTO
-    if itens_extraidos:
+                if await verificar_e_recuperar_loading(page): continue
+
+                # 2. Se a busca deu certo, tenta extrair
+                resultado = await extrair_dados_produto(page, codigo, qtd)
+                if resultado:
+                    itens_extraidos.append(resultado)
+                
+                await asyncio.sleep(1.0)
+                break # Sai do while e vai pro próximo item do for
+
+            except Exception as e:
+                print(f"❌ Erro crítico no loop F11: {e}")
+                if await verificar_e_recuperar_loading(page): continue
+                try: await page.reload(wait_until="networkidle")
+                except: pass
+                break
+
+    if itens_extraidos and salvar_lote_sqlite:
         validos = [r for r in itens_extraidos if r and r.get("status") != "Não encontrado"]
-        
         if validos:
-            if salvar_lote_sqlite:
-                print(f"⏳ Salvando {len(validos)} itens no banco...")
-                if salvar_lote_sqlite(preparar_dados_finais(validos)):
-                    print("✅ Banco atualizado!")
-                else:
-                    print("❌ Erro ao salvar no banco.")
+            print(f"⏳ Salvando {len(validos)} itens no banco...")
+            if salvar_lote_sqlite(preparar_dados_finais(validos)):
+                print("✅ Banco atualizado!")
             else:
-                print("ℹ️ Banco não configurado.")
-        else:
-            print("⚠️ Nada encontrado para salvar.")
+                print("❌ Erro ao salvar no banco.")
     
     return itens_extraidos

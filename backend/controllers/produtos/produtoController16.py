@@ -12,7 +12,7 @@ except ImportError:
 # ===================== AUXILIARES ===================== #
 def clean_price(preco_str):
     if not preco_str: return 0.0
-    preco = re.sub(r'[^\d,]', '', preco_str)
+    preco = re.sub(r'[^\d,]', '', str(preco_str))
     preco = preco.replace(",", ".")
     try: return float(preco)
     except: return 0.0
@@ -23,9 +23,39 @@ def format_brl(valor):
 
 def clean_stock(stock_str):
     if not stock_str: return 0.0
-    stock = re.sub(r'[^\d]', '', stock_str)
+    stock = re.sub(r'[^\d]', '', str(stock_str))
     try: return float(stock)
     except: return 0.0
+
+# ===================== TRATAMENTO LOADING (TRAVAMENTO) ===================== #
+async def verificar_e_recuperar_loading(page) -> bool:
+    """
+    Verifica se a tela de loading está travada ou se a página quebrou.
+    Se necessário: Dá refresh na página e aguarda o Angular carregar.
+    """
+    try:
+        # Tenta detectar loading (Furacão costuma ter máscaras de loading ou #loading)
+        # Seletor genérico + especifico se houver
+        loading_visible = await page.locator("#loading, .loading-mask, .block-ui-overlay").is_visible(timeout=1000)
+        
+        if loading_visible:
+            print("⚠️ TELA DE LOADING TRAVADA DETECTADA! Iniciando recuperação...")
+            await page.reload()
+            
+            # Espera o reload
+            try: await page.wait_for_load_state("networkidle", timeout=10000)
+            except: pass
+
+            # Espera o Angular "hidratar" (importante no Furacão)
+            print("⏳ Aguardando 5s para o sistema voltar...")
+            await asyncio.sleep(5)
+            
+            print("🔄 Página atualizada. Retomando fluxo...")
+            return True
+    except Exception:
+        pass
+    
+    return False
 
 # ===================== NAVEGAÇÃO E BUSCA ===================== #
 async def buscar_produto(page, codigo):
@@ -33,30 +63,46 @@ async def buscar_produto(page, codigo):
         # Seletor do campo de busca
         selector_busca = "input#gsearch"
         
+        # Garante que o campo está visível antes de interagir
         await page.wait_for_selector(selector_busca, state="visible", timeout=20000)
         
         campo = page.locator(selector_busca)
-        await campo.click()
+        
+        # Clica e limpa com garantia (force=True ajuda se tiver overlay invisivel)
+        await campo.click(force=True)
+        await asyncio.sleep(0.3)
         await page.keyboard.press("Control+A")
+        await asyncio.sleep(0.1)
         await page.keyboard.press("Backspace")
+        await asyncio.sleep(0.2)
         
         # Digita e pesquisa
+        print(f"⌨️ Digitando: {codigo}")
         await campo.fill(str(codigo))
         await asyncio.sleep(0.5)
         
-        print(f"⌛ Pesquisando {codigo}...")
+        print("🚀 Enter para pesquisar...")
         await page.keyboard.press("Enter")
         
-        # Espera carregar os cards
+        # Espera carregar os cards OU mensagem de erro
+        # (Adicionei verificação de loading aqui também)
+        print("⏳ Aguardando resultados...")
+        
+        # Corrida: Resultado vs Loading Travado
         try:
-            await page.wait_for_selector("tr[ng-controller='RowCtrl']", timeout=10000)
-        except:
-            pass 
+            task_result = asyncio.create_task(page.wait_for_selector("tr[ng-controller='RowCtrl']", timeout=10000))
+            task_loading = asyncio.create_task(page.wait_for_selector(".loading-mask", state="visible", timeout=2000))
             
-        await asyncio.sleep(2)
+            done, pending = await asyncio.wait({task_result, task_loading}, return_when=asyncio.FIRST_COMPLETED)
+            for t in pending: t.cancel()
+        except:
+            pass
+            
+        await asyncio.sleep(1.5)
         
     except Exception as e:
         print(f"❌ Erro na busca Furação: {e}")
+        # Não lança erro aqui para permitir que o loop principal trate com reload
 
 # ===================== EXTRAÇÃO DOS DADOS ===================== #
 async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1):
@@ -83,37 +129,38 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
         # --- EXTRAÇÃO ---
         
         # Nome / Descrição
-        # HTML: <span ... class="ng-binding">BICO INJ.EL.PALIO ... </span>
         nome_element = card.locator("div.descricao span.ng-binding").last
         nome_text = (await nome_element.inner_text()).strip()
         
         # Código
-        # HTML: <span ... class="ng-binding">IWP065</span>
         try:
             cod_el = card.locator("span.ng-binding").first 
             codigo_fab = (await cod_el.inner_text()).strip()
         except:
             codigo_fab = codigo_solicitado
 
-        # Marca (AJUSTADO)
-        # HTML: <div><strong>Marca:</strong> <span class="ng-binding">ORIGINAL-Bicos Inj</span></div>
+        # Marca
         marca_text = "N/A"
         try:
-            # Pega o <span> que é irmão direto (+) do <strong> que contém o texto 'Marca:'
             marca_el = card.locator("strong:has-text('Marca:') + span")
             if await marca_el.count() > 0:
                 marca_text = (await marca_el.inner_text()).strip()
         except: pass
 
         # Imagem
-        img_element = card.locator("div.img img").first
-        link_img = await img_element.get_attribute("src")
-        if link_img and not link_img.startswith("http"):
-            link_img = "https://vendas.furacao.com.br" + link_img
+        try:
+            img_element = card.locator("div.img img").first
+            link_img = await img_element.get_attribute("src")
+            if link_img and not link_img.startswith("http"):
+                link_img = "https://vendas.furacao.com.br" + link_img
+        except: link_img = None
 
         # Preço
-        preco_element = card.locator("span.h3.ng-binding").last
-        preco_raw = (await preco_element.inner_text()).strip()
+        try:
+            preco_element = card.locator("span.h3.ng-binding").last
+            preco_raw = (await preco_element.inner_text()).strip()
+        except: preco_raw = "0,00"
+        
         preco_num = clean_price(preco_raw)
         
         # Estoque
@@ -126,7 +173,7 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
         except: pass
         
         # Disponibilidade
-        tem_estoque = qtd_disponivel > 0
+        tem_estoque = qtd_disponivel > 0 and preco_num > 0
 
     except Exception as e:
         print(f"⚠ Erro na extração do card: {e}")
@@ -137,36 +184,20 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
     pode_comprar = tem_estoque and (qtd_disponivel >= quantidade_solicitada)
 
     regiao_sp = {
-        "uf": "RJ",
-        "preco": preco_raw,
-        "preco_num": preco_num,
-        "preco_formatado": format_brl(preco_num),
-        "qtdSolicitada": quantidade_solicitada,
-        "qtdDisponivel": qtd_disponivel,
-        "valor_total": valor_total,
-        "valor_total_formatado": format_brl(valor_total),
-        "podeComprar": pode_comprar,
-        "mensagem": None if pode_comprar else "Estoque insuficiente",
-        "disponivel": tem_estoque
+        "uf": "RJ", "preco": preco_raw, "preco_num": preco_num,
+        "preco_formatado": format_brl(preco_num), "qtdSolicitada": quantidade_solicitada,
+        "qtdDisponivel": qtd_disponivel, "valor_total": valor_total,
+        "valor_total_formatado": format_brl(valor_total), "podeComprar": pode_comprar,
+        "mensagem": None if pode_comprar else "Estoque insuficiente", "disponivel": tem_estoque
     }
 
     item_formatado = {
-        "codigo": codigo_fab,
-        "nome": nome_text,
-        "marca": marca_text,
-        "imagem": link_img,
-        "preco": preco_raw,
-        "preco_num": preco_num,
-        "preco_formatado": format_brl(preco_num),
-        "valor_total": valor_total,
-        "valor_total_formatado": format_brl(valor_total),
-        "uf": "RJ",
-        "qtdSolicitada": quantidade_solicitada,
-        "qtdDisponivel": qtd_disponivel,
-        "podeComprar": pode_comprar,
-        "mensagem": regiao_sp["mensagem"],
-        "disponivel": tem_estoque,
-        "status": "Disponível" if tem_estoque else "Indisponível",
+        "codigo": codigo_fab, "nome": nome_text, "marca": marca_text, "imagem": link_img,
+        "preco": preco_raw, "preco_num": preco_num, "preco_formatado": format_brl(preco_num),
+        "valor_total": valor_total, "valor_total_formatado": format_brl(valor_total),
+        "uf": "RJ", "qtdSolicitada": quantidade_solicitada, "qtdDisponivel": qtd_disponivel,
+        "podeComprar": pode_comprar, "mensagem": regiao_sp["mensagem"],
+        "disponivel": tem_estoque, "status": "Disponível" if tem_estoque else "Indisponível",
         "regioes": [regiao_sp]
     }
     
@@ -185,12 +216,26 @@ def preparar_dados_finais(lista_itens):
     }
 
 # ===================== MAIN LOOP ===================== #
-async def processar_lista_produtos_sequencial16(page, lista_produtos):
+async def processar_lista_produtos_sequencial16(login_data_ou_page, lista_produtos):
     itens_extraidos = []
     
+    # === CORREÇÃO: Extração correta do objeto 'page' da tupla de login ===
+    if isinstance(login_data_ou_page, (tuple, list)):
+        if len(login_data_ou_page) >= 3:
+            page = login_data_ou_page[2]
+        else:
+            page = login_data_ou_page[-1]
+    else:
+        page = login_data_ou_page
+    
+    # Validação
+    if not page or not hasattr(page, 'goto'):
+        print("❌ Erro: Objeto 'page' inválido recebido.")
+        return []
+
     if not lista_produtos:
         print("⚠️ Lista vazia. Usando teste: IWP065")
-        lista_produtos = [{"codigo": "IWP065", "quantidade": 1}]
+      
     elif isinstance(lista_produtos, str):
         lista_produtos = [{"codigo": lista_produtos, "quantidade": 1}]
 
@@ -200,33 +245,50 @@ async def processar_lista_produtos_sequencial16(page, lista_produtos):
         
         print(f"\n📦 [{idx+1}/{len(lista_produtos)}] Furação -> Buscando: {codigo}")
         
-        try:
-            await buscar_produto(page, codigo)
-            resultado = await extrair_dados_produto(page, codigo, qtd)
-            
-            if resultado:
-                itens_extraidos.append(resultado)
-            
-            await asyncio.sleep(1.5) 
+        # === LOOP DE RETRY (Tenta o mesmo produto se der erro) ===
+        while True:
+            try:
+                # 1. Verifica se já está travado antes de começar
+                if await verificar_e_recuperar_loading(page):
+                    continue
 
-        except Exception as e:
-            print(f"❌ Erro crítico no loop F16: {e}")
-            await page.reload(wait_until="networkidle")
+                await buscar_produto(page, codigo)
+                
+                # 2. Verifica se travou durante a busca
+                if await verificar_e_recuperar_loading(page):
+                    continue
+
+                resultado = await extrair_dados_produto(page, codigo, qtd)
+                
+                if resultado:
+                    itens_extraidos.append(resultado)
+                
+                await asyncio.sleep(1.5)
+                
+                # Se chegou aqui, deu tudo certo, sai do loop de retry
+                break 
+
+            except Exception as e:
+                print(f"❌ Erro crítico no loop F16: {e}")
+                
+                # Tenta recuperar se for loading
+                if await verificar_e_recuperar_loading(page):
+                    continue
+                
+                # Se for outro erro, dá reload e aborta esse item para não travar o robô inteiro
+                try: await page.reload(wait_until="networkidle")
+                except: pass
+                break
 
     # SALVAMENTO
-    if itens_extraidos:
+    if itens_extraidos and salvar_lote_sqlite:
         validos = [r for r in itens_extraidos if r and r.get("status") != "Não encontrado"]
         
         if validos:
-            if salvar_lote_sqlite:
-                print(f"⏳ Salvando {len(validos)} itens no banco...")
-                if salvar_lote_sqlite(preparar_dados_finais(validos)):
-                    print("✅ Banco atualizado!")
-                else:
-                    print("❌ Erro ao salvar no banco.")
+            print(f"⏳ Salvando {len(validos)} itens no banco...")
+            if salvar_lote_sqlite(preparar_dados_finais(validos)):
+                print("✅ Banco atualizado!")
             else:
-                print("ℹ️ Banco não configurado.")
-        else:
-            print("⚠️ Nada encontrado para salvar.")
+                print("❌ Erro ao salvar no banco.")
     
     return itens_extraidos

@@ -19,7 +19,7 @@ LOCAL_STORAGE_DATA = {
     "_grecaptcha": "09AKhCRwg6uUdTEOQ1L6hBW-WqmuPCOoMPug3fLT8oBcWTnAc37hFU8vj-ZGdiI1FdEioWWxduo202Pa6zj_Rc29hl3TCv5c77FM7VPYY8Ddj13v4ntiLGrW_rzuQTqCja"
 }
 
-HEADLESS = True 
+HEADLESS = False 
 
 async def human_type(page, selector, text):
     """Digita como um humano para evitar detecção"""

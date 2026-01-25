@@ -11,149 +11,96 @@ except ImportError:
 
 # ===================== AUXILIARES ===================== #
 def clean_price(preco_str):
-    if not preco_str:
-        return 0.0
+    if not preco_str: return 0.0
     preco = re.sub(r"[^\d,]", "", str(preco_str))
     preco = preco.replace(",", ".")
-    try:
-        return float(preco)
-    except:
-        return 0.0
+    try: return float(preco)
+    except: return 0.0
 
 def format_brl(valor):
-    if valor is None or valor == 0:
-        return "R$ 0,00"
+    if valor is None or valor == 0: return "R$ 0,00"
     return "R$ " + f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def clean_stock(stock_str):
-    if not stock_str:
-        return 0.0
+    if not stock_str: return 0.0
     stock = re.sub(r"[^\d]", "", str(stock_str))
+    try: return float(stock)
+    except: return 0.0
+
+# ===================== TRATAMENTO LOADING (TRAVAMENTO) ===================== #
+async def verificar_e_recuperar_loading(page) -> bool:
+    """
+    Verifica se a tela de loading (#loading) está travada.
+    Se estiver visível: Dá refresh na página e aguarda.
+    Retorna True se houve recuperação (refresh), False se está tudo ok.
+    """
     try:
-        return float(stock)
-    except:
-        return 0.0
+        # Verifica se o elemento de loading está visível
+        if await page.locator("#loading").is_visible(timeout=1000):
+            print("⚠️ TELA DE LOADING TRAVADA DETECTADA! Iniciando recuperação...")
+            
+            # Atualiza a página
+            await page.reload()
+            try:
+                await page.wait_for_load_state("networkidle", timeout=10000)
+            except:
+                pass
+            
+            print("🔄 Página atualizada. Retomando fluxo...")
+            return True
+    except Exception:
+        pass
+    
+    return False
 
 # ===================== HELPERS “COM CALMA” ===================== #
 async def click_com_calma(locator, pre=0.4, post=0.6, force=True):
-    """Clique com pequenas esperas para evitar race condition/UI lenta."""
     try:
         await asyncio.sleep(pre)
         await locator.scroll_into_view_if_needed()
-    except:
-        pass
+    except: pass
     await asyncio.sleep(pre)
     await locator.click(force=force)
     await asyncio.sleep(post)
 
 async def limpar_e_digitar_com_calma(page, selector, texto, delay_keypress=70):
-    """
-    Limpa e digita no campo com delays (mais confiável que fill direto em UIs sensíveis).
-    """
     await page.wait_for_selector(selector, state="visible", timeout=20000)
     campo = page.locator(selector).first
-
     await click_com_calma(campo, pre=0.25, post=0.25)
-
-    # limpa com ctrl+a/backspace
     await asyncio.sleep(0.2)
     await page.keyboard.press("Control+A")
     await asyncio.sleep(0.15)
     await page.keyboard.press("Backspace")
     await asyncio.sleep(0.25)
-
-    # digita “humano”
     await campo.type(str(texto), delay=delay_keypress)
     await asyncio.sleep(0.3)
 
 # ===================== NAVEGAÇÃO E BUSCA ===================== #
-# ===================== NAVEGAÇÃO E BUSCA ===================== #
 async def navegar_para_pedido(page):
-    """Navega até a tela de PVW - Pedido (/Movimentacao) com tentativas e fallback."""
+    """
+    Navega DIRETO via URL para /Movimentacao.
+    """
     try:
         url_atual = page.url or ""
+        
+        # Se já estiver na URL certa, sai
         if "/Movimentacao" in url_atual:
             return
 
-        print("📂 Navegando para o menu 'PVW - Pedido'...")
-
-        selector_menu = "a[href='/Movimentacao']"
-        menu_pedido = page.locator(selector_menu).first
-
-        # 1) Garante que o link existe/está visível
-        await page.wait_for_selector(selector_menu, state="attached", timeout=20000)
+        base_url = "http://novo.plsweb.com.br"
+        if ".br" in url_atual:
+            base_url = url_atual.split(".br")[0] + ".br"
+        
+        target_url = base_url + "/Movimentacao"
+        
+        print(f"🚀 Navegando direto para: {target_url}")
+        await page.goto(target_url)
+        await page.wait_for_load_state("domcontentloaded")
+        
         try:
-            await menu_pedido.wait_for(state="visible", timeout=15000)
-        except Exception:
+            await page.wait_for_selector("a[href='#tabs-2'], #loading", timeout=10000)
+        except:
             pass
-
-        # 2) Tentativas de clique com verificação real de navegação
-        tentativas = 3
-        for tentativa in range(1, tentativas + 1):
-            if "/Movimentacao" in (page.url or ""):
-                return
-
-            print(f"➡️ Tentativa {tentativa}/{tentativas} para entrar em /Movimentacao...")
-
-            try:
-                # "com calma"
-                await asyncio.sleep(0.8)  # <-- tempo extra antes do clique (solicitado)
-                await menu_pedido.scroll_into_view_if_needed()
-                await asyncio.sleep(0.4)
-
-                # clique principal
-                await menu_pedido.click(force=True, timeout=8000)
-            except Exception:
-                # fallback: click via JS
-                try:
-                    await page.evaluate(
-                        """() => {
-                            const a = document.querySelector("a[href='/Movimentacao']");
-                            if (a) a.click();
-                        }"""
-                    )
-                except Exception:
-                    pass
-
-            # 3) Aguarda URL mudar OU algo típico da tela aparecer
-            try:
-                await page.wait_for_url("**/Movimentacao**", timeout=12000)
-                await page.wait_for_load_state("networkidle")
-                await asyncio.sleep(1.2)
-                return
-            except Exception:
-                # às vezes a SPA muda sem "wait_for_url" captar; checa por elementos da tela
-                try:
-                    # Se algum elemento da tela de movimentação existir, considera OK
-                    # (mantive genérico: aba produtos ou input codPeca costuma aparecer depois)
-                    await page.wait_for_selector("a[href='#tabs-2'], #codPeca, tr.jqgrow", timeout=6000)
-                    await asyncio.sleep(0.8)
-                    return
-                except Exception:
-                    print("⚠️ Ainda não entrou. Vou tentar novamente...")
-
-        # 4) Fallback final: força navegação por URL (pega a origem atual)
-        if "/Movimentacao" not in (page.url or ""):
-            base = ""
-            try:
-                # tenta montar base a partir do origin atual
-                base = await page.evaluate("() => window.location.origin")
-            except Exception:
-                pass
-
-            # se não conseguir origin, usa url atual “até o host”
-            if not base:
-                try:
-                    m = re.match(r"^(https?://[^/]+)", page.url or "")
-                    base = m.group(1) if m else ""
-                except Exception:
-                    base = ""
-
-            if base:
-                url_forcada = base.rstrip("/") + "/Movimentacao"
-                print(f"🛠️ Fallback: forçando navegação para {url_forcada}")
-                await page.goto(url_forcada, wait_until="networkidle")
-                await asyncio.sleep(1.5)
 
     except Exception as e:
         print(f"⚠️ Erro ao navegar para Pedido: {e}")
@@ -162,6 +109,7 @@ async def navegar_para_pedido(page):
 async def ativar_aba_produtos(page):
     """Clica na aba 'Produtos' (#tabs-2) com calma"""
     try:
+        # Seletor baseado no HTML fornecido e href
         aba_produtos = page.locator("a[href='#tabs-2']").first
 
         # se o input já estiver visível, a aba já está ok
@@ -171,34 +119,35 @@ async def ativar_aba_produtos(page):
         print("📑 Clicando na aba 'Produtos'...")
         try:
             await aba_produtos.wait_for(state="visible", timeout=10000)
-        except:
-            pass
+        except: pass
 
         if await aba_produtos.count() > 0 and await aba_produtos.is_visible():
             await click_com_calma(aba_produtos, pre=0.6, post=1.0)
             await asyncio.sleep(1.0)
 
-        # garante que o campo apareceu
         await page.wait_for_selector("#codPeca", state="visible", timeout=15000)
 
     except Exception as e:
         print(f"⚠️ Erro ao ativar aba Produtos: {e}")
 
 async def buscar_produto(page, codigo):
-    """
-    Busca com etapas e delays:
-    - navega
-    - ativa aba
-    - limpa e digita
-    - enter
-    - aguarda jqGrid estabilizar
-    """
     try:
         await navegar_para_pedido(page)
+        
+        # Se travou no loading logo após navegar
+        if await verificar_e_recuperar_loading(page):
+            await navegar_para_pedido(page)
+
+        # ================================================================
+        # ⏳ WAIT SOLICITADO: 5 Segundos antes de clicar na aba Produtos
+        # ================================================================
+        print("⏳ Aguardando 10 segundos fixos para carregamento da tela...")
+        await asyncio.sleep(10)
+        # ================================================================
+
         await ativar_aba_produtos(page)
 
         selector_busca = "#codPeca"
-
         print(f"⌨️ Digitando código: {codigo}")
         await limpar_e_digitar_com_calma(page, selector_busca, codigo, delay_keypress=70)
 
@@ -206,15 +155,24 @@ async def buscar_produto(page, codigo):
         await asyncio.sleep(0.4)
         await page.keyboard.press("Enter")
 
-        # aguarda resultados ou “vazio” estabilizar
         print("⏳ Aguardando resultados...")
-        # tenta aguardar uma linha jqgrow; se não vier, segue adiante
+        
+        # --- VERIFICAÇÃO DE LOADING ENQUANTO ESPERA ---
         try:
-            await page.wait_for_selector("tr.jqgrow", timeout=6000)
+            task_result = asyncio.create_task(page.wait_for_selector("tr.jqgrow", timeout=6000))
+            task_loading = asyncio.create_task(page.wait_for_selector("#loading", state="visible", timeout=6000))
+            
+            done, pending = await asyncio.wait({task_result, task_loading}, return_when=asyncio.FIRST_COMPLETED)
+            
+            for t in pending: t.cancel()
+            
+            if task_loading in done:
+                try: await task_loading
+                except: pass
         except:
             pass
+        # -----------------------------------------------
 
-        # tempo extra para jqGrid terminar renderização
         await asyncio.sleep(1.4)
 
     except Exception as e:
@@ -239,9 +197,7 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
     tr = linhas.first
 
     try:
-        # (Opcional) garante que a primeira linha está “pronta”
         await asyncio.sleep(0.4)
-
         colunas = tr.locator("td")
 
         codigo_fab = (await colunas.nth(0).inner_text()).strip()
@@ -255,7 +211,6 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
         preco_num = clean_price(preco_raw)
 
         link_img = None
-
         tem_estoque = qtd_disponivel > 0 and preco_num > 0
 
     except Exception as e:
@@ -266,41 +221,22 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
     pode_comprar = tem_estoque and (qtd_disponivel >= quantidade_solicitada)
 
     regiao_sp = {
-        "uf": "RJ",
-        "preco": preco_raw,
-        "preco_num": preco_num,
-        "preco_formatado": format_brl(preco_num),
-        "qtdSolicitada": quantidade_solicitada,
-        "qtdDisponivel": qtd_disponivel,
-        "valor_total": valor_total,
-        "valor_total_formatado": format_brl(valor_total),
-        "podeComprar": pode_comprar,
-        "mensagem": None if pode_comprar else "Estoque insuficiente",
-        "disponivel": tem_estoque
+        "uf": "RJ", "preco": preco_raw, "preco_num": preco_num,
+        "preco_formatado": format_brl(preco_num), "qtdSolicitada": quantidade_solicitada,
+        "qtdDisponivel": qtd_disponivel, "valor_total": valor_total,
+        "valor_total_formatado": format_brl(valor_total), "podeComprar": pode_comprar,
+        "mensagem": None if pode_comprar else "Estoque insuficiente", "disponivel": tem_estoque
     }
 
-    item_formatado = {
-        "codigo": codigo_fab,
-        "nome": nome_text,
-        "marca": marca_text,
-        "imagem": link_img,
-        "preco": preco_raw,
-        "preco_num": preco_num,
-        "preco_formatado": format_brl(preco_num),
-        "valor_total": valor_total,
-        "valor_total_formatado": format_brl(valor_total),
-        "uf": "RJ",
-        "qtdSolicitada": quantidade_solicitada,
-        "qtdDisponivel": qtd_disponivel,
-        "podeComprar": pode_comprar,
-        "mensagem": regiao_sp["mensagem"],
-        "disponivel": tem_estoque,
-        "status": "Disponível" if tem_estoque else "Indisponível",
+    return {
+        "codigo": codigo_fab, "nome": nome_text, "marca": marca_text, "imagem": link_img,
+        "preco": preco_raw, "preco_num": preco_num, "preco_formatado": format_brl(preco_num),
+        "valor_total": valor_total, "valor_total_formatado": format_brl(valor_total),
+        "uf": "RJ", "qtdSolicitada": quantidade_solicitada, "qtdDisponivel": qtd_disponivel,
+        "podeComprar": pode_comprar, "mensagem": regiao_sp["mensagem"],
+        "disponivel": tem_estoque, "status": "Disponível" if tem_estoque else "Indisponível",
         "regioes": [regiao_sp]
     }
-
-    print(f"✅ SUCESSO PLS: {codigo_fab} | {format_brl(preco_num)} | Estoque: {qtd_disponivel}")
-    return item_formatado
 
 # ===================== DB PREPARER ===================== #
 def preparar_dados_finais(lista_itens):
@@ -308,14 +244,27 @@ def preparar_dados_finais(lista_itens):
     return {
         "data_processamento_lote": agora.strftime("%d/%m/%Y %H:%M:%S"),
         "data_obj": agora,
-        "fornecedror": "Odapel",
+        "fornecedror": "Odapel", 
         "total_itens": len(lista_itens),
         "itens": lista_itens
     }
 
 # ===================== MAIN LOOP ===================== #
-async def processar_lista_produtos_sequencial17(page, lista_produtos):
+async def processar_lista_produtos_sequencial17(login_data_ou_page, lista_produtos):
     itens_extraidos = []
+
+    # === Extração segura da Page da Tupla ===
+    if isinstance(login_data_ou_page, (tuple, list)):
+        if len(login_data_ou_page) >= 3:
+            page = login_data_ou_page[2]
+        else:
+            page = login_data_ou_page[-1]
+    else:
+        page = login_data_ou_page
+    
+    if not page or not hasattr(page, 'goto'):
+        print("❌ Erro: Objeto 'page' inválido recebido.")
+        return []
 
     if not lista_produtos:
         print("⚠️ Lista vazia. Usando teste: 1867.8")
@@ -329,33 +278,43 @@ async def processar_lista_produtos_sequencial17(page, lista_produtos):
 
         print(f"\n📦 [{idx+1}/{len(lista_produtos)}] PLS -> Buscando: {codigo}")
 
-        try:
-            await buscar_produto(page, codigo)
-            resultado = await extrair_dados_produto(page, codigo, qtd)
+        # === LOOP DE RETRY PARA LOADING TRAVADO ===
+        while True:
+            try:
+                # 1. Verifica antes
+                if await verificar_e_recuperar_loading(page):
+                    continue 
 
-            if resultado:
-                itens_extraidos.append(resultado)
+                await buscar_produto(page, codigo)
+                
+                # 2. Verifica depois da busca
+                if await verificar_e_recuperar_loading(page):
+                    continue 
 
-            await asyncio.sleep(1.1)
+                resultado = await extrair_dados_produto(page, codigo, qtd)
 
-        except Exception as e:
-            print(f"❌ Erro crítico no loop F17: {e}")
-            await page.reload(wait_until="networkidle")
+                if resultado:
+                    itens_extraidos.append(resultado)
+
+                await asyncio.sleep(1.1)
+                break 
+
+            except Exception as e:
+                print(f"❌ Erro crítico no loop F17: {e}")
+                if await verificar_e_recuperar_loading(page):
+                    continue
+                try: await page.reload(wait_until="networkidle")
+                except: pass
+                break 
 
     # SALVAMENTO
-    if itens_extraidos:
+    if itens_extraidos and salvar_lote_sqlite:
         validos = [r for r in itens_extraidos if r and r.get("status") != "Não encontrado"]
-
         if validos:
-            if salvar_lote_sqlite:
-                print(f"⏳ Salvando {len(validos)} itens no banco...")
-                if salvar_lote_sqlite(preparar_dados_finais(validos)):
-                    print("✅ Banco atualizado!")
-                else:
-                    print("❌ Erro ao salvar no banco.")
+            print(f"⏳ Salvando {len(validos)} itens no banco...")
+            if salvar_lote_sqlite(preparar_dados_finais(validos)):
+                print("✅ Banco atualizado!")
             else:
-                print("ℹ️ Banco não configurado.")
-        else:
-            print("⚠️ Nada encontrado para salvar.")
-
+                print("❌ Erro ao salvar no banco.")
+    
     return itens_extraidos

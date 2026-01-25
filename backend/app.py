@@ -166,19 +166,24 @@ app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=240)
 jwt = JWTManager(app)
 # ====================================================================
 
-CORS(
-    app,
-    resources={r"/api/*": {
-        "origins": [
-            "http://206.0.29.133:3000",
-            "http://206.0.29.133",
-            "https://apvieira.uniqcode.com.br"
-        ]
-    }},
-    supports_credentials=False,
-    allow_headers=["Content-Type", "Authorization"],
-    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-)
+# ===================== PRODUÇÃO ======================= #
+
+# CORS(
+#     app,
+#     resources={r"/api/*": {
+#         "origins": [
+#             "http://206.0.29.133:3000",
+#             "http://206.0.29.133",
+#             "https://apvieira.uniqcode.com.br"
+#         ]
+#     }},
+#     supports_credentials=False,
+#     allow_headers=["Content-Type", "Authorization"],
+#     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+# )
+
+# ===================== LOCALMENTE ======================= #
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # ===================== REGISTRO DE BLUEPRINTS ======================= #
 app.register_blueprint(user_bp)
