@@ -33,7 +33,7 @@ async def buscar_produto(page, codigo):
         selector_busca = "input#inputSearch"
         
         # TIMEOUT AUMENTADO (60s) - Site lento
-        await page.wait_for_selector(selector_busca, state="visible", timeout=60000)
+        await page.wait_for_selector(selector_busca, state="visible", timeout=90000)
         
         campo = page.locator(selector_busca)
         
@@ -54,9 +54,9 @@ async def buscar_produto(page, codigo):
         
         # Espera o componente do card aparecer (AUMENTADO PARA 45s)
         try:
-            await page.wait_for_selector("app-card-produto-home", timeout=45000)
+            await page.wait_for_selector("app-card-produto-home", timeout=90000)
             # Espera extra para renderização final dos preços
-            await asyncio.sleep(5) 
+            await asyncio.sleep(8) 
         except:
             print("⚠️ Timeout aguardando cards (pode não ter resultados).")
             pass 

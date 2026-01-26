@@ -38,7 +38,11 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
     try:
         # --- AGUARDAR CARREGAMENTO ---
         selector_preco_real = ".price-action-wrapper .price"
-        await item.locator(selector_preco_real).first.wait_for(state="visible", timeout=15000)
+        
+        # ANTES: await item.locator(selector_preco_real).first.wait_for(state="visible", timeout=15000)
+        # DEPOIS (Correção): Usa "attached" para aceitar elemento oculto
+        await item.locator(selector_preco_real).first.wait_for(state="attached", timeout=15000)
+        # await item.locator(selector_preco_real).first.wait_for(state="visible", timeout=15000)
         
         # Extração do Nome
         nome_text = (await item.locator(".product-item-name .product-item-link").first.inner_text()).strip()

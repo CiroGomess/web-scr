@@ -90,6 +90,25 @@ async def verificar_e_recuperar_loading(page) -> bool:
 
     return False
 
+
+async def fechar_tutorial_se_houver(page):
+    try:
+        await fechar_tutorial_se_houver(page)
+        # Seletor do "overlay" ou botão de fechar do tutorial (Driver.js)
+        # Tenta clicar no botão de "Pular" ou "Done" se existir, ou clica no overlay
+        if await page.locator(".driver-overlay, .driver-close-btn").is_visible(timeout=2000):
+            print("🛡️ Tutorial detectado. Tentando fechar...")
+            # Tenta disparar um Escape ou clicar no botão de fechar
+            await page.keyboard.press("Escape")
+            await asyncio.sleep(0.5)
+            
+            # Se ainda estiver lá, força clique no overlay
+            if await page.locator(".driver-overlay").is_visible():
+                await page.click(".driver-overlay", position={"x": 10, "y": 10}, force=True)
+                print("🛡️ Clique forçado no overlay do tutorial.")
+    except:
+        pass
+
 # ===================== NAVEGAÇÃO E BUSCA ===================== #
 async def buscar_produto(page, codigo):
     """
