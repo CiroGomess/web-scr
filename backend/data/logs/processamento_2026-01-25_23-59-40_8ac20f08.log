@@ -1,0 +1,167 @@
+=== LOG DE PROCESSAMENTO ===
+Data/Hora: 2026-01-25 23:59:40
+Session ID: 8ac20f08-3c03-4bf2-b5a8-d03fdb1e8d5e
+==================================================
+
+[23:59:40] 🔄 [BACKGROUND] Iniciando processamento em background...
+[23:59:40] 🔄 [BACKGROUND] Executando main()...
+[23:59:40] 📂 Carregando arquivo: data/temp/2026-01-25_20-59-38_DATA.xlsx
+[23:59:40] 📦 63 produtos carregados para processamento.
+[23:59:40] 
+--- 🚀 Iniciando: Fornecedor 6 (Laguna) ---
+[23:59:40] 
+🔐 Iniciando LOGIN na LAGUNA (Modo Stealth Manual)...
+[23:59:40] 
+🔁 Tentativa 1/3 (Laguna)
+[23:59:40] 
+--- 🚀 Iniciando: Fornecedor 8 (Sama) ---
+[23:59:40] 
+🔐 Iniciando LOGIN na SAMA (Modo Stealth Manual)...
+[23:59:40] 
+🔁 Tentativa 1/3 (SAMA)
+[23:59:41] ❌ Erro na Laguna: BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════╗
+║ Looks like you launched a headed browser without having a XServer running.                     ║
+║ Set either 'headless: true' or use 'xvfb-run <your-playwright-app>' before running Playwright. ║
+║                                                                                                ║
+║ <3 Playwright Team                                                                             ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════╝
+Call log:
+  - <launching> /root/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AcceptCHFrame,AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --no-sandbox --disable-blink-features=AutomationControlled --start-maximized --no-sandbox --disable-infobars --disable-dev-shm-usage --user-data-dir=/tmp/playwright_chromiumdev_profile-kEuri4 --remote-debugging-pipe --no-startup-window
+  - <launched> pid=156752
+  - [pid=156752][err] [156752:156752:0125/235941.059958:ERROR:ui/ozone/platform/x11/ozone_platform_x11.cc:259] Missing X server or $DISPLAY
+  - [pid=156752][err] [156752:156752:0125/235941.060132:ERROR:ui/aura/env.cc:257] The platform failed to initialize.  Exiting.
+  - [pid=156752] <gracefully close start>
+  - [pid=156752] <kill>
+  - [pid=156752] <will force kill>
+  - [pid=156752] <process did exit: exitCode=1, signal=null>
+  - [pid=156752] starting temporary directories cleanup
+  - [pid=156752] finished temporary directories cleanup
+  - [pid=156752] <gracefully close end>
+[23:59:41] ❌ Erro na SAMA: BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════╗
+║ Looks like you launched a headed browser without having a XServer running.                     ║
+║ Set either 'headless: true' or use 'xvfb-run <your-playwright-app>' before running Playwright. ║
+║                                                                                                ║
+║ <3 Playwright Team                                                                             ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════╝
+Call log:
+  - <launching> /root/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AcceptCHFrame,AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --no-sandbox --disable-blink-features=AutomationControlled --start-maximized --no-sandbox --disable-infobars --disable-dev-shm-usage --user-data-dir=/tmp/playwright_chromiumdev_profile-5jkRbi --remote-debugging-pipe --no-startup-window
+  - <launched> pid=156753
+  - [pid=156753][err] [156753:156753:0125/235941.067354:ERROR:ui/ozone/platform/x11/ozone_platform_x11.cc:259] Missing X server or $DISPLAY
+  - [pid=156753][err] [156753:156753:0125/235941.067471:ERROR:ui/aura/env.cc:257] The platform failed to initialize.  Exiting.
+  - [pid=156753] <process did exit: exitCode=1, signal=null>
+  - [pid=156753] starting temporary directories cleanup
+  - [pid=156753] <gracefully close start>
+  - [pid=156753] <kill>
+  - [pid=156753] <skipped force kill spawnedProcess.killed=false processClosed=true>
+  - [pid=156753] finished temporary directories cleanup
+  - [pid=156753] <gracefully close end>
+[23:59:43] 
+🔁 Tentativa 2/3 (Laguna)
+[23:59:43] 
+🔁 Tentativa 2/3 (SAMA)
+[23:59:43] ❌ Erro na SAMA: BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════╗
+║ Looks like you launched a headed browser without having a XServer running.                     ║
+║ Set either 'headless: true' or use 'xvfb-run <your-playwright-app>' before running Playwright. ║
+║                                                                                                ║
+║ <3 Playwright Team                                                                             ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════╝
+Call log:
+  - <launching> /root/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AcceptCHFrame,AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --no-sandbox --disable-blink-features=AutomationControlled --start-maximized --no-sandbox --disable-infobars --disable-dev-shm-usage --user-data-dir=/tmp/playwright_chromiumdev_profile-ogoVMd --remote-debugging-pipe --no-startup-window
+  - <launched> pid=156796
+  - [pid=156796][err] [156796:156796:0125/235943.314474:ERROR:ui/ozone/platform/x11/ozone_platform_x11.cc:259] Missing X server or $DISPLAY
+  - [pid=156796][err] [156796:156796:0125/235943.314603:ERROR:ui/aura/env.cc:257] The platform failed to initialize.  Exiting.
+  - [pid=156796] <gracefully close start>
+  - [pid=156796] <kill>
+  - [pid=156796] <will force kill>
+  - [pid=156796] <process did exit: exitCode=1, signal=null>
+  - [pid=156796] starting temporary directories cleanup
+  - [pid=156796] finished temporary directories cleanup
+  - [pid=156796] <gracefully close end>
+[23:59:43] ❌ Erro na Laguna: BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════╗
+║ Looks like you launched a headed browser without having a XServer running.                     ║
+║ Set either 'headless: true' or use 'xvfb-run <your-playwright-app>' before running Playwright. ║
+║                                                                                                ║
+║ <3 Playwright Team                                                                             ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════╝
+Call log:
+  - <launching> /root/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AcceptCHFrame,AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --no-sandbox --disable-blink-features=AutomationControlled --start-maximized --no-sandbox --disable-infobars --disable-dev-shm-usage --user-data-dir=/tmp/playwright_chromiumdev_profile-vG7mbk --remote-debugging-pipe --no-startup-window
+  - <launched> pid=156795
+  - [pid=156795][err] [156795:156795:0125/235943.343642:ERROR:ui/ozone/platform/x11/ozone_platform_x11.cc:259] Missing X server or $DISPLAY
+  - [pid=156795][err] [156795:156795:0125/235943.343744:ERROR:ui/aura/env.cc:257] The platform failed to initialize.  Exiting.
+  - [pid=156795] <gracefully close start>
+  - [pid=156795] <kill>
+  - [pid=156795] <will force kill>
+  - [pid=156795] <process did exit: exitCode=1, signal=null>
+  - [pid=156795] starting temporary directories cleanup
+  - [pid=156795] finished temporary directories cleanup
+  - [pid=156795] <gracefully close end>
+[23:59:45] 
+🔁 Tentativa 3/3 (SAMA)
+[23:59:45] 
+🔁 Tentativa 3/3 (Laguna)
+[23:59:45] ❌ Erro na Laguna: BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════╗
+║ Looks like you launched a headed browser without having a XServer running.                     ║
+║ Set either 'headless: true' or use 'xvfb-run <your-playwright-app>' before running Playwright. ║
+║                                                                                                ║
+║ <3 Playwright Team                                                                             ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════╝
+Call log:
+  - <launching> /root/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AcceptCHFrame,AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --no-sandbox --disable-blink-features=AutomationControlled --start-maximized --no-sandbox --disable-infobars --disable-dev-shm-usage --user-data-dir=/tmp/playwright_chromiumdev_profile-GHkHoJ --remote-debugging-pipe --no-startup-window
+  - <launched> pid=156838
+  - [pid=156838][err] [156838:156838:0125/235945.573088:ERROR:ui/ozone/platform/x11/ozone_platform_x11.cc:259] Missing X server or $DISPLAY
+  - [pid=156838][err] [156838:156838:0125/235945.573185:ERROR:ui/aura/env.cc:257] The platform failed to initialize.  Exiting.
+  - [pid=156838] <gracefully close start>
+  - [pid=156838] <kill>
+  - [pid=156838] <will force kill>
+  - [pid=156838] <process did exit: exitCode=1, signal=null>
+  - [pid=156838] starting temporary directories cleanup
+  - [pid=156838] finished temporary directories cleanup
+  - [pid=156838] <gracefully close end>
+[23:59:45] ❌ Erro na SAMA: BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════╗
+║ Looks like you launched a headed browser without having a XServer running.                     ║
+║ Set either 'headless: true' or use 'xvfb-run <your-playwright-app>' before running Playwright. ║
+║                                                                                                ║
+║ <3 Playwright Team                                                                             ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════╝
+Call log:
+  - <launching> /root/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AcceptCHFrame,AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --no-sandbox --disable-blink-features=AutomationControlled --start-maximized --no-sandbox --disable-infobars --disable-dev-shm-usage --user-data-dir=/tmp/playwright_chromiumdev_profile-X2Yljk --remote-debugging-pipe --no-startup-window
+  - <launched> pid=156837
+  - [pid=156837][err] [156837:156837:0125/235945.601229:ERROR:ui/ozone/platform/x11/ozone_platform_x11.cc:259] Missing X server or $DISPLAY
+  - [pid=156837][err] [156837:156837:0125/235945.601320:ERROR:ui/aura/env.cc:257] The platform failed to initialize.  Exiting.
+  - [pid=156837] <gracefully close start>
+  - [pid=156837] <kill>
+  - [pid=156837] <will force kill>
+  - [pid=156837] <process did exit: exitCode=1, signal=null>
+  - [pid=156837] starting temporary directories cleanup
+  - [pid=156837] finished temporary directories cleanup
+  - [pid=156837] <gracefully close end>
+[23:59:47] ❌ Falha definitiva no login da Laguna após todas as tentativas.
+[23:59:47] ❌ Falha no login de Fornecedor 6 (Laguna): Login não retornou browser/context/page válidos. Pulando...
+[23:59:47] ❌ Falha definitiva no login da SAMA após todas as tentativas.
+[23:59:47] ❌ Falha no login de Fornecedor 8 (Sama): Login não retornou browser/context/page válidos. Pulando...
+[23:59:47] ✅ [BACKGROUND] Processamento concluído. Total: 0
+[23:59:47] ✅ [BACKGROUND] Controle de último processamento atualizado.
+[23:59:47] ✅ [BACKGROUND] Arquivos temporários limpos.
+[23:59:47] 🎉 [BACKGROUND] Processamento finalizado com sucesso!
+
+==================================================
+Total de linhas de log: 28
+Fim do processamento: 2026-01-25 23:59:47
