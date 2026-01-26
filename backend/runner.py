@@ -151,22 +151,22 @@ async def main(concorrencia_fornecedores=5):
         print(f"📦 {len(lista_produtos)} produtos carregados para processamento.")
 
         fornecedores_config = [
-            # {"nome": "Fornecedor 1 (PortalComDip)", "login_func": login_portalcomdip, "process_func": processar_lista_produtos_parallel, "tipo": "parallel"},
-            # {"nome": "Fornecedor 2 (Roles)", "login_func": login_roles, "process_func": processar_lista_produtos_sequencial2, "tipo": "sequencial"},
-            # {"nome": "Fornecedor 3 (Acaraujo)", "login_func": login_acaraujo, "process_func": processar_lista_produtos_sequencial3, "tipo": "sequencial"},
-            # {"nome": "Fornecedor 4 (GB)", "login_func": login_fornecedor4, "process_func": processar_lista_produtos_sequencial4, "tipo": "sequencial"},
-            # {"nome": "Fornecedor 5 (Jahu)", "login_func": login_jahu, "process_func": processar_lista_produtos_acaraujo, "tipo": "sequencial"},
+            {"nome": "Fornecedor 1 (PortalComDip)", "login_func": login_portalcomdip, "process_func": processar_lista_produtos_parallel, "tipo": "parallel"},
+            {"nome": "Fornecedor 2 (Roles)", "login_func": login_roles, "process_func": processar_lista_produtos_sequencial2, "tipo": "sequencial"},
+            {"nome": "Fornecedor 3 (Acaraujo)", "login_func": login_acaraujo, "process_func": processar_lista_produtos_sequencial3, "tipo": "sequencial"},
+            {"nome": "Fornecedor 4 (GB)", "login_func": login_fornecedor4, "process_func": processar_lista_produtos_sequencial4, "tipo": "sequencial"},
+            {"nome": "Fornecedor 5 (Jahu)", "login_func": login_jahu, "process_func": processar_lista_produtos_acaraujo, "tipo": "sequencial"},
             {"nome": "Fornecedor 6 (Laguna)", "login_func": login_laguna_bypass, "process_func": processar_lista_produtos_sequencial6, "tipo": "sequencial"},
-            # {"nome": "Fornecedor 7 (RMP)", "login_func": login_rmp, "process_func": processar_lista_produtos_sequencial1, "tipo": "sequencial"},
+            {"nome": "Fornecedor 7 (RMP)", "login_func": login_rmp, "process_func": processar_lista_produtos_sequencial1, "tipo": "sequencial"},
             {"nome": "Fornecedor 8 (Sama)", "login_func": login_sama_bypass, "process_func": processar_lista_produtos_sequencial8, "tipo": "sequencial"},
-            # {"nome": "Fornecedor 9 (Solroom)", "login_func": login_solroom, "process_func": processar_lista_produtos_sequencial9, "tipo": "sequencial"},
-            # {"nome": "Fornecedor 10 (Matriz)", "login_func": login_matriz_bypass, "process_func": processar_lista_produtos_sequencial10, "tipo": "sequencial"},
-            # {"nome": "Fornecedor 11 (DPK)", "login_func": login_dpk_bypass, "process_func": processar_lista_produtos_sequencial11, "tipo": "sequencial"},
-            # {"nome": "Fornecedor 12 (Takao)", "login_func": login_takao_bypass, "process_func": processar_lista_produtos_sequencial12, "tipo": "sequencial"},
-            # {"nome": "Fornecedor 13 (Skypecas)", "login_func": login_skypecas, "process_func": processar_lista_produtos_sequencial_sky, "tipo": "sequencial"},
-            # {"nome": "Fornecedor 14 (Sky/Pellegrino)", "login_func": login_sky_bypass, "process_func": processar_lista_produtos_sequencial14, "tipo": "sequencial"},
-            # {"nome": "Fornecedor 16 (Furacao)", "login_func": login_furacao_bypass, "process_func": processar_lista_produtos_sequencial16, "tipo": "sequencial"},
-            # {"nome": "Fornecedor 17 (PLS/Odapel)", "login_func": login_pls_bypass, "process_func": processar_lista_produtos_sequencial17, "tipo": "sequencial"},
+            {"nome": "Fornecedor 9 (Solroom)", "login_func": login_solroom, "process_func": processar_lista_produtos_sequencial9, "tipo": "sequencial"},
+            {"nome": "Fornecedor 10 (Matriz)", "login_func": login_matriz_bypass, "process_func": processar_lista_produtos_sequencial10, "tipo": "sequencial"},
+            {"nome": "Fornecedor 11 (DPK)", "login_func": login_dpk_bypass, "process_func": processar_lista_produtos_sequencial11, "tipo": "sequencial"},
+            {"nome": "Fornecedor 12 (Takao)", "login_func": login_takao_bypass, "process_func": processar_lista_produtos_sequencial12, "tipo": "sequencial"},
+            {"nome": "Fornecedor 13 (Skypecas)", "login_func": login_skypecas, "process_func": processar_lista_produtos_sequencial_sky, "tipo": "sequencial"},
+            {"nome": "Fornecedor 14 (Sky/Pellegrino)", "login_func": login_sky_bypass, "process_func": processar_lista_produtos_sequencial14, "tipo": "sequencial"},
+            {"nome": "Fornecedor 16 (Furacao)", "login_func": login_furacao_bypass, "process_func": processar_lista_produtos_sequencial16, "tipo": "sequencial"},
+            {"nome": "Fornecedor 17 (PLS/Odapel)", "login_func": login_pls_bypass, "process_func": processar_lista_produtos_sequencial17, "tipo": "sequencial"},
         ]
 
         sem = asyncio.Semaphore(concorrencia_fornecedores)
