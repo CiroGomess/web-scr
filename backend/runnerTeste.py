@@ -1,295 +1,188 @@
 import asyncio
+import time
 from playwright.async_api import async_playwright
 
-# --- IMPORTS ---
-from controllers.fornecedores.Fornecedor14Controller import login_sky_bypass
+# ===================== IMPORTS LOGIN ===================== #
+from controllers.fornecedores.Fornecedor1Controller import login as login_f1
+from controllers.fornecedores.Fornecedor2Controller import login_roles as login_f2
+from controllers.fornecedores.Fornecedor3Controller import login_acaraujo as login_f3
+from controllers.fornecedores.Fornecedor4Controller import login_fornecedor4 as login_f4
+from controllers.fornecedores.Fornecedor5Controller import login_jahu as login_f5
+from controllers.fornecedores.Fornecedor6Controller import login_laguna_bypass as login_f6
+from controllers.fornecedores.Fornecedor7Controller import login_rmp as login_f7
+from controllers.fornecedores.Fornecedor8Controller import login_sama_bypass as login_f8
+from controllers.fornecedores.Fornecedor9Controller import login_solroom as login_f9
+from controllers.fornecedores.Fornecedor10Controller import login_matriz_bypass as login_f10
+from controllers.fornecedores.Fornecedor11Controller import login_dpk_bypass as login_f11
+from controllers.fornecedores.Fornecedor12Controller import login_takao_bypass as login_f12
+from controllers.fornecedores.Fornecedor13Controller import login_skypecas as login_f13
+from controllers.fornecedores.Fornecedor14Controller import login_sky_bypass as login_f14
+from controllers.fornecedores.Fornecedor15Controller import login_riojc_bypass as login_f15
+from controllers.fornecedores.Fornecedor16Controller import login_furacao_bypass as login_f16
+from controllers.fornecedores.Fornecedor17Controller import login_pls_bypass as login_f17
+
+# ===================== IMPORTS PRODUTO ===================== #
+from controllers.produtos.produtoController1 import processar_lista_produtos_parallel
+from controllers.produtos.produtoController2 import processar_lista_produtos_sequencial2
+from controllers.produtos.produtoController3 import processar_lista_produtos_sequencial3
+from controllers.produtos.produtoController4 import processar_lista_produtos_sequencial4
+from controllers.produtos.produtoController5 import processar_lista_produtos_acaraujo
+from controllers.produtos.produtoController6 import processar_lista_produtos_sequencial6
+from controllers.produtos.produtoController7 import processar_lista_produtos_sequencial1
+from controllers.produtos.produtoController8 import processar_lista_produtos_sequencial8
+from controllers.produtos.produtoController9 import processar_lista_produtos_sequencial9
+from controllers.produtos.produtoController10 import processar_lista_produtos_sequencial10
+from controllers.produtos.produtoController11 import processar_lista_produtos_sequencial11
+from controllers.produtos.produtoController12 import processar_lista_produtos_sequencial12
+from controllers.produtos.produtoController13 import processar_lista_produtos_sequencial_sky
 from controllers.produtos.produtoController14 import processar_lista_produtos_sequencial14
+from controllers.produtos.produtoController15 import processar_lista_produtos_sequencial15
+from controllers.produtos.produtoController16 import processar_lista_produtos_sequencial16
+from controllers.produtos.produtoController17 import processar_lista_produtos_sequencial17
 
-async def main():
-    print("🚀 Iniciando Runner de Teste (Fornecedor 4 - GB)...")
 
-    # ================= LISTA DE PRODUTOS COMPLETA ================= #
-    # Raw string com os dados copiados (Código.Index)
-    raw_list = """
-31968.1
-16792.1
-21115.1
-21136.1
-18471.1
-14712.1
-21620.1
-12964.3
-13578.1
-29449
-03634.1
-10535.1
-13473.1
-13475.1
-12178.1
-08939.1
-03637.1
-11726.1
-13479.1
-22411.4
-03628.1
-16265.1
-10960.1
-18893.1
-29472.2
-11166.1
-23605.1
-10791.1
-11315.1
-17540.1
-15061.1
-12699.1
-18287.1
-25635.2
-25635.1
-12964.5
-14354.3
-26791.2
-15740.5
-22785.2
-25418.3
-24257.4
-20147.3
-14993.2
-22013.3
-22629.2
-20126.3
-22420.3
-01418.5
-31817.1
-05519.4
-22227.4
-09524.3
-03628
-16446.4
-13578
-10791
-10791.2
-11315
-11166
-12699
-16265
-13475
-13479
-03634
-10535
-12178
-08939
-03637
-11089.4
-22629.1
-12964.1
-11089.1
-15092.1
-10462.1
-14993.1
-20147.1
-20156
-25418
-16446.1
-15740.1
-20057.1
-22411.2
-14354.1
-26791
-18287
-21136
-18893
-23605
-25635
-21115
-14712
-21620
-16792
-13473
-22785
-24257.3
-18471
-20147.2
-16446.5
-22420.2
-01418.3
-05519.3
-22227.1
-29472.1
-17540
-11726
-15061
-10960
-21561.1
-28891
-20126.5
-24257.1
-29472
-16792.3
-21136.2
-18471.2
-29449.1
-13475.2
-12178.2
-14712.2
-11726.2
-11166.2
-13578.2
-12699.2
-13473.2
-11315.2
-08939.2
-10960.2
-21115.2
-16446.3
-11089.2
-20156.1
-20126.1
-22411.3
-22013.1
-21561.2
-22411.1
-01418.1
-15476.1
-09524.1
-22420.1
-05519.1
-22227.2
-29472.4
-01418
-14354
-26791.1
-12964
-12964.4
-25418.1
-05519
-11089
-09524
-15740
-15476
-10462
-21561
-16446
-28891.1
-15092
-14993
-31817
-22420
-20156.2
-20147
-22411
-20057
-20126
-22785.1
-22013
-22629
-22227
-24257
-22227.6
-15476.4
-15740.4
-05519.5
-09524.2
-11089.5
-15092.2
-14993.3
-31968
-24257.2
-14354.2
-12964.6
-01418.4
-20126.4
-22013.4
-24257.5
-22227.5
-20057.2
-20147.4
-22420.4
-01418.2
-12964.2
-10462.2
-16446.2
-20156.3
-25418.2
-11089.3
-28891.2
-15740.3
-22013.2
-05519.2
-05519.6
-15476.2
-20126.2
-22227.3
-22785.3
-29472.3
-15740.2
+# ===================== CONFIG ===================== #
+BATCH_SIZE = 5
 
-    """
 
-    # 🛠️ PROCESSAMENTO DA LISTA (Limpeza e Formatação)
-    # Remove espaços, linhas vazias e remove o sufixo (.1, .2) se existir
-    lista_limpa = []
-    seen_codes = set() # Opcional: para evitar duplicatas exatas na mesma busca se desejar
+# ===================== MAPA FORNECEDORES ===================== #
+FORNECEDORES = [
+    ("F1", login_f1, processar_lista_produtos_parallel),
+    ("F2", login_f2, processar_lista_produtos_sequencial2),
+    ("F3", login_f3, processar_lista_produtos_sequencial3),
+    ("F4", login_f4, processar_lista_produtos_sequencial4),
+    ("F5", login_f5, processar_lista_produtos_acaraujo),
+    ("F6", login_f6, processar_lista_produtos_sequencial6),
+    ("F7", login_f7, processar_lista_produtos_sequencial1),
+    ("F8", login_f8, processar_lista_produtos_sequencial8),
+    ("F9", login_f9, processar_lista_produtos_sequencial9),
+    ("F10", login_f10, processar_lista_produtos_sequencial10),
+    ("F11", login_f11, processar_lista_produtos_sequencial11),
+    ("F12", login_f12, processar_lista_produtos_sequencial12),
+    ("F13", login_f13, processar_lista_produtos_sequencial_sky),
+    ("F14", login_f14, processar_lista_produtos_sequencial14),
+    ("F15", login_f15, processar_lista_produtos_sequencial15),
+    ("F16", login_f16, processar_lista_produtos_sequencial16),
+    ("F17", login_f17, processar_lista_produtos_sequencial17),
+]
 
-    for line in raw_list.strip().split('\n'):
-        line = line.strip()
-        if not line:
-            continue
-        
-        # Se tiver ponto (ex: 31968.1), pega só a parte antes do ponto (31968)
-        # O usuário pediu quantidade 1 para todos
-        if '.' in line:
-            code_only = line.split('.')[0]
+
+# ===================== UTIL ===================== #
+def chunked(lista, size):
+    for i in range(0, len(lista), size):
+        yield lista[i:i + size]
+
+
+def log(msg):
+    print(f"[{time.strftime('%H:%M:%S')}] {msg}")
+
+
+# ===================== RELATÓRIO TXT ===================== #
+def salvar_relatorio_txt(resumo):
+    with open("resultado_fornecedores.txt", "w", encoding="utf-8") as f:
+        f.write("RELATÓRIO DE EXECUÇÃO DOS FORNECEDORES\n")
+        f.write("=" * 45 + "\n\n")
+
+        for nome, ok, qtd in resumo:
+            status = "OK" if ok else "ERRO"
+            f.write(f"Fornecedor: {nome}\n")
+            f.write(f"Status: {status}\n")
+            f.write(f"Itens processados: {qtd}\n")
+            f.write("-" * 45 + "\n")
+
+    print("\n📄 Arquivo resultado_fornecedores.txt gerado com sucesso!")
+
+
+# ===================== EXECUÇÃO FORNECEDOR ===================== #
+async def executar_fornecedor(p, nome, login_fn, produto_fn, lista_produtos):
+    log(f"🔐 [{nome}] Iniciando login")
+
+    browser = None
+    context = None
+    page = None
+
+    try:
+        browser, context, page = await login_fn(p)
+
+        if not context:
+            log(f"❌ [{nome}] Login falhou")
+            return nome, False, []
+
+        log(f"🔎 [{nome}] Login OK, iniciando busca de produtos")
+
+        # 🔥 AJUSTE ESPECÍFICO PARA O F1
+        if nome == "F1":
+            resultados = await produto_fn(
+                context=context,
+                lista_produtos=lista_produtos,
+                batch_size=BATCH_SIZE
+            )
         else:
-            code_only = line
-        
-        # Adiciona na lista com quantidade 1
-        lista_limpa.append({"codigo": code_only, "quantidade": 1})
+            resultados = await produto_fn(
+                (browser, context, page),
+                lista_produtos
+            )
 
-    print(f"📋 Lista processada: {len(lista_limpa)} itens carregados para busca.")
-    print(f"🔍 Exemplo dos primeiros 5: {[i['codigo'] for i in lista_limpa[:5]]}...")
+        log(f"✅ [{nome}] Finalizado ({len(resultados)} itens)")
+        return nome, True, resultados
 
-    # ================= EXECUÇÃO PLAYWRIGHT ================= #
-    async with async_playwright() as p:
+    except Exception as e:
+        log(f"🔥 [{nome}] Erro crítico: {e}")
+        return nome, False, []
 
-        # 1) Login
+    finally:
         try:
-            login_data = await login_sky_bypass(p)
-            browser, context, page = login_data
-        except Exception as e:
-            print(f"\n❌ Falha crítica no login: {e}")
-            return
-
-        if not page:
-            print("\n❌ Falha crítica: O login não retornou uma página válida.")
+            if context:
+                await context.close()
             if browser:
                 await browser.close()
-            return
+        except:
+            pass
 
-        print("\n--- ✅ Login OK. Iniciando Pesquisa de Produtos ---")
 
-        # 2) Chama o processamento com a lista limpa
-        try:
-            resultados = await processar_lista_produtos_sequencial14(login_data, lista_limpa)
-        except Exception as e:
-            print(f"\n❌ Erro durante o processamento da lista: {e}")
-            resultados = []
+# ===================== MAIN ===================== #
+async def main():
 
-        # 3) Exibe Resultados
-        print("\n--- 📊 Resultado do Teste ---")
-        if not resultados:
-            print("Nenhum resultado retornado.")
-        else:
-            print(f"Total processado: {len(resultados)}")
-            # Mostra apenas os 5 últimos para não poluir o console, ou todos se preferir
-            for item in resultados[-5:]: 
-                print(f"[{item.get('codigo')}] {item.get('nome')} | {item.get('preco_formatado')}")
+    # ================= LISTA DE PRODUTOS ================= #
+    # 🔹 FORMATO ANTIGO (EXATAMENTE COMO VOCÊ PEDIU)
+    lista_produtos = [
+        {"codigo": "31968", "quantidade": 1},
+        {"codigo": "16792", "quantidade": 1},
+        {"codigo": "21115", "quantidade": 1},
+        {"codigo": "21136", "quantidade": 1},
+        {"codigo": "18471", "quantidade": 1},
+    ]
 
-        print("\n🏁 Teste finalizado. Fechando em 5 segundos...")
-        await asyncio.sleep(5)
+    log(f"📦 Total de produtos para teste: {len(lista_produtos)}")
 
-        if browser:
-            await browser.close()
+    async with async_playwright() as p:
 
+        resumo_execucao = []
+
+        for idx, grupo in enumerate(chunked(FORNECEDORES, BATCH_SIZE), start=1):
+            log(f"\n🚀 INICIANDO LOTE {idx} ({len(grupo)} fornecedores)")
+
+            tarefas = [
+                executar_fornecedor(p, nome, login_fn, produto_fn, lista_produtos)
+                for nome, login_fn, produto_fn in grupo
+            ]
+
+            resultados = await asyncio.gather(*tarefas)
+
+            for nome, ok, itens in resultados:
+                status = "OK" if ok else "ERRO"
+                qtd = len(itens)
+                resumo_execucao.append((nome, ok, qtd))
+                log(f"📊 [{nome}] Status: {status} | Itens: {qtd}")
+
+            log(f"✅ LOTE {idx} FINALIZADO\n")
+            await asyncio.sleep(5)
+
+        salvar_relatorio_txt(resumo_execucao)
+
+    log("🏁 Runner finalizado")
+
+
+# ===================== ENTRY ===================== #
 if __name__ == "__main__":
     asyncio.run(main())
