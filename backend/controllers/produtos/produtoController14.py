@@ -4,7 +4,7 @@ import asyncio
 import re
 from datetime import datetime
 
-# Variável de controle para remover o tutorial apenas uma vez
+# ===================== CONTROLE GLOBAL ===================== #
 bloqueios_removidos = False
 
 # ===================== IMPORTAÇÃO DO SERVIÇO DE BANCO ===================== #
@@ -14,55 +14,39 @@ except ImportError:
     print("⚠️ Aviso: 'services.db_saver' não encontrado. O salvamento no banco será pulado.")
     salvar_lote_sqlite = None
 
-# ===================== AUXILIARES ===================== #
+# ===================== UTILITÁRIOS ===================== #
 def clean_price(preco_str):
     if not preco_str:
         return 0.0
-    preco = re.sub(r"[^\d,]", "", str(preco_str))
-    preco = preco.replace(",", ".")
+    preco = re.sub(r"[^\d,]", "", str(preco_str)).replace(",", ".")
     try:
         return float(preco)
     except:
         return 0.0
 
 def format_brl(valor):
-    if valor is None or valor == 0:
+    if not valor:
         return "R$ 0,00"
     return "R$ " + f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 # ===================== PAGE RESOLVER ===================== #
 def resolver_page(login_data_ou_page):
     if isinstance(login_data_ou_page, (tuple, list)):
-        if len(login_data_ou_page) >= 3:
-            return login_data_ou_page[2]
-        return login_data_ou_page[-1]
+        return login_data_ou_page[2] if len(login_data_ou_page) >= 3 else login_data_ou_page[-1]
     return login_data_ou_page
 
-async def safe_reload(page, motivo="", wait_until="domcontentloaded"):
+async def safe_reload(page, motivo=""):
     try:
-        print(f"🔄 Reload (safe) {('— ' + motivo) if motivo else ''}")
-        await page.reload(wait_until=wait_until, timeout=60000)
-        try:
-            await page.wait_for_load_state("domcontentloaded", timeout=20000)
-        except:
-            pass
-        return True
-    except Exception as e:
-        print(f"⚠️ Falha no reload: {e}")
-        return False
+        print(f"🔄 Reload seguro {motivo}")
+        await page.reload(wait_until="domcontentloaded", timeout=60000)
+        await page.wait_for_load_state("domcontentloaded", timeout=20000)
+    except:
+        pass
 
-# ===================== TIMEOUT HELPER ===================== #
-async def extrair_com_timeout(coro, timeout_s=5):
-    try:
-        return await asyncio.wait_for(coro, timeout=timeout_s)
-    except asyncio.TimeoutError:
-        return "__TIMEOUT__"
-
-# ===================== MODAL BOOTSTRAP KILLER ===================== #
+# ===================== MODAL KILLER (BOOTSTRAP + CUPOM) ===================== #
 async def fechar_modais_bootstrap(page, motivo=""):
     """
-    Remove QUALQUER modal Bootstrap visível que esteja interceptando cliques.
-    Idempotente e seguro.
+    Remove QUALQUER modal Bootstrap ou overlay que intercepte cliques.
     """
     try:
         await page.evaluate("""
@@ -75,53 +59,40 @@ async def fechar_modais_bootstrap(page, motivo=""):
         """)
         if motivo:
             print(f"🧹 Modal Bootstrap removido ({motivo})")
-        else:
-            print("🧹 Modal Bootstrap removido")
-        await asyncio.sleep(0.25)
-        return True
-    except Exception as e:
-        print(f"ℹ️ Falha ao remover modal Bootstrap: {e}")
-        return False
+        await asyncio.sleep(0.2)
+    except:
+        pass
 
-# ===================== FECHADOR DRIVER.JS ===================== #
+# ===================== DRIVER.JS KILLER ===================== #
 async def fechar_driver_tutorial(page, motivo=""):
     try:
-        btn_close = page.locator("button.driver-popover-close-btn")
+        btn = page.locator("button.driver-popover-close-btn")
         popover = page.locator(".driver-popover")
 
         for _ in range(3):
-            await asyncio.sleep(0.6)
-
-            if await btn_close.count() == 0:
-                return False
+            if await btn.count() == 0:
+                return
 
             try:
-                await btn_close.first.wait_for(state="visible", timeout=2500)
-            except:
-                continue
-
-            try:
-                await btn_close.first.click(force=True, timeout=3000)
+                await btn.first.wait_for(state="visible", timeout=2000)
+                await btn.first.click(force=True, timeout=2000)
             except:
                 await page.evaluate("""
                     () => {
-                        const btn = document.querySelector('button.driver-popover-close-btn');
-                        if (btn) btn.click();
+                        const b = document.querySelector('button.driver-popover-close-btn');
+                        if (b) b.click();
                     }
                 """)
 
             try:
-                await popover.first.wait_for(state="hidden", timeout=6000)
+                await popover.first.wait_for(state="hidden", timeout=4000)
             except:
                 pass
 
-            print(f"🛑 Tutorial Driver.js fechado. {('Motivo: ' + motivo) if motivo else ''}")
-            return True
-
-        return False
-    except Exception as e:
-        print(f"ℹ️ Erro ao fechar tutorial Driver.js: {e}")
-        return False
+            print(f"🛑 Driver.js fechado ({motivo})")
+            return
+    except:
+        pass
 
 # ===================== BLOQUEIOS ÚNICOS ===================== #
 async def verificar_bloqueios_unico(page):
@@ -129,11 +100,11 @@ async def verificar_bloqueios_unico(page):
     if bloqueios_removidos:
         return
 
-    print("🛡️ Verificando bloqueios (Primeira vez na Pellegrino)...")
-    await asyncio.sleep(2.5)
+    print("🛡️ Limpando bloqueios iniciais (Pellegrino)...")
+    await asyncio.sleep(2)
 
-    await fechar_driver_tutorial(page, motivo="primeira verificação")
-    await fechar_modais_bootstrap(page, motivo="primeira verificação")
+    await fechar_driver_tutorial(page, "primeira execução")
+    await fechar_modais_bootstrap(page, "primeira execução")
 
     bloqueios_removidos = True
 
@@ -142,119 +113,117 @@ async def buscar_produto(page, codigo):
     try:
         await fechar_modais_bootstrap(page, "antes da busca")
 
-        selector_busca = "#search-prod"
-        await page.wait_for_selector(selector_busca, state="visible", timeout=20000)
+        selector = "#search-prod"
+        await page.wait_for_selector(selector, state="visible", timeout=20000)
 
-        campo = page.locator(selector_busca)
-        await campo.click()
-        await page.keyboard.press("Control+A")
-        await page.keyboard.press("Backspace")
-
+        campo = page.locator(selector)
+        await campo.click(force=True)
+        await campo.fill("")
         await campo.fill(str(codigo))
-        await asyncio.sleep(0.5)
 
-        print(f"⌛ Pesquisando {codigo}...")
+        print(f"⌛ Buscando {codigo}...")
         await fechar_modais_bootstrap(page, "antes do ENTER")
         await page.keyboard.press("Enter")
 
         await verificar_bloqueios_unico(page)
 
-        await asyncio.sleep(1.0)
-        await fechar_driver_tutorial(page, motivo="pós-pesquisa")
-        await fechar_modais_bootstrap(page, motivo="pós-pesquisa")
+        await asyncio.sleep(1)
+        await fechar_driver_tutorial(page, "pós-busca")
+        await fechar_modais_bootstrap(page, "pós-busca")
 
         try:
-            await page.wait_for_selector("table tbody tr.odd, table tbody tr.even", timeout=8000)
+            await page.wait_for_selector(
+                "table tbody tr.odd, table tbody tr.even",
+                timeout=8000
+            )
         except:
             pass
 
-    except Exception as e:
-        print(f"❌ Erro na busca: {e}")
+    except Exception:
+        print(f"⚠️ Não foi possível buscar o produto {codigo}.")
 
 # ===================== EXTRAÇÃO ===================== #
-async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1):
+async def extrair_dados_produto(page, codigo, quantidade=1):
     await fechar_modais_bootstrap(page, "antes da extração")
 
-    linha_selector = "table tbody tr.odd, table tbody tr.even"
-
-    if await page.locator(linha_selector).count() == 0:
-        print(f"❌ {codigo_solicitado} não encontrado (Tabela vazia).")
+    linhas = page.locator("table tbody tr.odd, table tbody tr.even")
+    if await linhas.count() == 0:
+        print(f"ℹ️ Produto {codigo} não encontrado.")
         return None
 
-    tr = page.locator(linha_selector).first
+    tr = linhas.first
 
     try:
         nome = (await tr.locator("span.font-weight-bold").inner_text()).strip()
         marca = (await tr.locator("span.text-truncate").inner_text()).strip()
-
         preco_raw = (await tr.locator("span.catalogo-preco").inner_text()).strip()
+
         preco_num = clean_price(preco_raw)
+        tem_estoque = preco_num > 0
 
         return {
-            "codigo": codigo_solicitado,
+            "codigo": codigo,
             "nome": nome,
             "marca": marca,
             "preco": preco_raw,
             "preco_num": preco_num,
             "preco_formatado": format_brl(preco_num),
-            "qtdSolicitada": quantidade_solicitada,
-            "qtdDisponivel": 1 if preco_num > 0 else 0,
-            "podeComprar": preco_num > 0,
-            "status": "Disponível" if preco_num > 0 else "Indisponível"
+            "qtdSolicitada": quantidade,
+            "qtdDisponivel": 1 if tem_estoque else 0,
+            "podeComprar": tem_estoque,
+            "status": "Disponível" if tem_estoque else "Indisponível"
         }
 
-    except Exception as e:
-        print(f"⚠ Erro na extração da linha: {e}")
+    except:
+        print(f"⚠️ Falha ao extrair dados de {codigo}.")
         return None
 
 # ===================== DB PREPARER ===================== #
-def preparar_dados_finais(lista_itens):
+def preparar_dados_finais(itens):
     agora = datetime.now()
     return {
         "data_processamento_lote": agora.strftime("%d/%m/%Y %H:%M:%S"),
         "data_obj": agora,
         "fornecedror": "Pellegrino",
-        "total_itens": len(lista_itens),
-        "itens": lista_itens
+        "total_itens": len(itens),
+        "itens": itens
     }
 
-# ===================== MAIN LOOP ===================== #
+# ===================== LOOP PRINCIPAL ===================== #
 async def processar_lista_produtos_sequencial14(login_data_ou_page, lista_produtos):
     global bloqueios_removidos
     bloqueios_removidos = False
 
-    itens_extraidos = []
     page = resolver_page(login_data_ou_page)
-
-    if not page or not hasattr(page, "goto"):
-        print("❌ Erro: Objeto 'page' inválido recebido.")
+    if not page:
+        print("❌ Page inválida.")
         return []
+
+    itens = []
 
     for idx, item in enumerate(lista_produtos):
         codigo = item["codigo"]
         qtd = item.get("quantidade", 1)
 
-        print(f"\n📦 [{idx+1}/{len(lista_produtos)}] Pellegrino -> Buscando: {codigo}")
+        print(f"\n📦 [{idx+1}/{len(lista_produtos)}] Pellegrino -> {codigo}")
 
         try:
             await buscar_produto(page, codigo)
-            await fechar_driver_tutorial(page, motivo="antes da extração")
-            await fechar_modais_bootstrap(page, motivo="antes da extração")
+            await fechar_driver_tutorial(page, "antes da extração")
+            await fechar_modais_bootstrap(page, "antes da extração")
 
             resultado = await extrair_dados_produto(page, codigo, qtd)
             if resultado:
-                itens_extraidos.append(resultado)
+                itens.append(resultado)
 
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.8)
 
-        except Exception as e:
-            print(f"❌ Erro crítico no loop F14: {e}")
-            await safe_reload(page, motivo="erro no loop F14")
+        except:
+            print(f"⚠️ Produto {codigo} ignorado por instabilidade.")
+            await safe_reload(page, "recuperação")
 
-    if itens_extraidos and salvar_lote_sqlite:
-        validos = [r for r in itens_extraidos if r]
-        if validos:
-            print(f"⏳ Salvando {len(validos)} itens Sky no banco...")
-            salvar_lote_sqlite(preparar_dados_finais(validos))
+    if itens and salvar_lote_sqlite:
+        print(f"⏳ Salvando {len(itens)} itens Pellegrino...")
+        salvar_lote_sqlite(preparar_dados_finais(itens))
 
-    return itens_extraidos
+    return itens
