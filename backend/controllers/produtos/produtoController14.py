@@ -1,3 +1,5 @@
+# produtoController14.py
+
 import asyncio
 import re
 from datetime import datetime
@@ -28,7 +30,46 @@ def format_brl(valor):
         return "R$ 0,00"
     return "R$ " + f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-# ===================== NOVO: FECHADOR ROBUSTO DO DRIVER.JS ===================== #
+# ===================== PAGE RESOLVER (ACEITA TUPLA OU PAGE) ===================== #
+def resolver_page(login_data_ou_page):
+    """
+    Aceita:
+      - page
+      - tuple/list (browser, context, page)
+    Retorna a page correta ou None.
+    """
+    if isinstance(login_data_ou_page, (tuple, list)):
+        if len(login_data_ou_page) >= 3:
+            return login_data_ou_page[2]
+        return login_data_ou_page[-1]
+    return login_data_ou_page
+
+async def safe_reload(page, motivo="", wait_until="domcontentloaded"):
+    """Reload que não explode e dá logs."""
+    try:
+        print(f"🔄 Reload (safe) {('— ' + motivo) if motivo else ''}")
+        await page.reload(wait_until=wait_until, timeout=60000)
+        try:
+            await page.wait_for_load_state("domcontentloaded", timeout=20000)
+        except:
+            pass
+        return True
+    except Exception as e:
+        print(f"⚠️ Falha no reload: {e}")
+        return False
+
+# ===================== TIMEOUT HELPER (PULAR EM 5s) ===================== #
+async def extrair_com_timeout(coro, timeout_s=5):
+    """
+    Executa uma coroutine de extração (inner_text/get_attribute/etc) com timeout curto.
+    Se passar do tempo, retorna "__TIMEOUT__" e o loop pula o produto.
+    """
+    try:
+        return await asyncio.wait_for(coro, timeout=timeout_s)
+    except asyncio.TimeoutError:
+        return "__TIMEOUT__"
+
+# ===================== FECHADOR ROBUSTO DO DRIVER.JS ===================== #
 async def fechar_driver_tutorial(page, motivo=""):
     """
     Fecha o popover do Driver.js com calma (esperas) e valida que sumiu.
@@ -40,24 +81,18 @@ async def fechar_driver_tutorial(page, motivo=""):
 
         # tenta algumas vezes porque o tutorial pode renderizar com atraso
         for tentativa in range(3):
-            # espera um pouco para o DOM estabilizar
             await asyncio.sleep(0.6)
 
-            # se não existir nada, sai
             if await btn_close.count() == 0:
                 return False
 
-            # se existe mas não está visível, dá uma chance dele aparecer
             try:
                 await btn_close.first.wait_for(state="visible", timeout=2500)
             except:
-                # se não ficou visível nessa tentativa, tenta novamente
                 continue
 
-            # settle time “com calma”
             await asyncio.sleep(1.2)
 
-            # clica no X
             try:
                 await btn_close.first.hover()
                 await asyncio.sleep(0.2)
@@ -78,7 +113,6 @@ async def fechar_driver_tutorial(page, motivo=""):
             try:
                 await popover.first.wait_for(state="hidden", timeout=6000)
             except:
-                # se não deu para validar pelo popover, valida pela ausência do botão
                 try:
                     await btn_close.first.wait_for(state="hidden", timeout=4000)
                 except:
@@ -104,8 +138,6 @@ async def verificar_bloqueios_unico(page):
         return
 
     print("🛡️ Verificando bloqueios (Primeira vez na Pellegrino)...")
-
-    # espera inicial maior para dar tempo do driver montar
     await asyncio.sleep(2.5)
 
     fechado = await fechar_driver_tutorial(page, motivo="primeira verificação")
@@ -126,18 +158,16 @@ async def buscar_produto(page, codigo):
         await page.keyboard.press("Control+A")
         await page.keyboard.press("Backspace")
 
-        # Digita e pesquisa
         await campo.fill(str(codigo))
         await asyncio.sleep(0.6)
 
         print(f"⌛ Pesquisando {codigo}...")
         await page.keyboard.press("Enter")
 
-        # ✅ Fecha tutorial (primeira vez com mais “paciência”)
+        # ✅ Fecha tutorial (primeira vez com mais paciência)
         await verificar_bloqueios_unico(page)
 
-        # ✅ E fecha novamente após a pesquisa (porque você disse que pode reaparecer)
-        # Com um pequeno delay extra para permitir renderização do popover
+        # ✅ fecha novamente após a pesquisa (pode reaparecer)
         await asyncio.sleep(1.0)
         await fechar_driver_tutorial(page, motivo="pós-pesquisa")
 
@@ -150,7 +180,7 @@ async def buscar_produto(page, codigo):
     except Exception as e:
         print(f"❌ Erro na busca: {e}")
 
-# ===================== EXTRAÇÃO DOS DADOS ===================== #
+# ===================== EXTRAÇÃO DOS DADOS (TIMEOUT 5s -> PULA) ===================== #
 async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1):
     linha_selector = "table tbody tr.odd, table tbody tr.even"
 
@@ -169,35 +199,64 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
     tr = page.locator(linha_selector).first
 
     try:
+        # Nome
         nome_element = tr.locator("span.font-weight-bold.font-size-h6-sm")
-        nome_text = (await nome_element.inner_text()).strip()
+        nome_text = await extrair_com_timeout(nome_element.inner_text(), timeout_s=5)
+        if nome_text == "__TIMEOUT__":
+            print(f"⏭️ Timeout (5s) extraindo NOME. Pulando {codigo_solicitado}.")
+            return None
+        nome_text = nome_text.strip()
 
+        # Marca (onde estava travando)
         marca_element = tr.locator("span.nowrap.text-truncate.font-weight-light")
-        marca_text = (await marca_element.inner_text()).strip()
+        marca_text = await extrair_com_timeout(marca_element.inner_text(), timeout_s=5)
+        if marca_text == "__TIMEOUT__":
+            print(f"⏭️ Timeout (5s) extraindo MARCA. Pulando {codigo_solicitado}.")
+            return None
+        marca_text = marca_text.strip()
 
+        # Código
         cod_element = tr.locator("span.procedencia")
         if await cod_element.count() > 0:
-            codigo_fab = (await cod_element.inner_text()).strip()
+            codigo_fab = await extrair_com_timeout(cod_element.inner_text(), timeout_s=5)
+            if codigo_fab == "__TIMEOUT__":
+                print(f"⏭️ Timeout (5s) extraindo CÓDIGO. Pulando {codigo_solicitado}.")
+                return None
+            codigo_fab = codigo_fab.strip()
         else:
             codigo_fab = codigo_solicitado
 
+        # Imagem
         img_element = tr.locator("div.symbol-label img")
-        link_img = await img_element.get_attribute("src")
+        link_img = await extrair_com_timeout(img_element.get_attribute("src"), timeout_s=5)
+        if link_img == "__TIMEOUT__":
+            print(f"⏭️ Timeout (5s) extraindo IMAGEM. Pulando {codigo_solicitado}.")
+            return None
+
         if link_img and not link_img.startswith("http"):
             link_img = "https://compreonline.pellegrino.com.br" + link_img
 
+        # Preço
         preco_element = tr.locator("span.catalogo-preco")
-        preco_raw = (await preco_element.inner_text()).strip()
+        preco_raw = await extrair_com_timeout(preco_element.inner_text(), timeout_s=5)
+        if preco_raw == "__TIMEOUT__":
+            print(f"⏭️ Timeout (5s) extraindo PREÇO. Pulando {codigo_solicitado}.")
+            return None
+        preco_raw = preco_raw.strip()
 
+        # Preço destaque (opcional)
         try:
             preco_destaque = tr.locator("span.catalogo-preco .text-green")
             if await preco_destaque.count() > 0:
-                preco_raw = await preco_destaque.inner_text()
+                preco_raw2 = await extrair_com_timeout(preco_destaque.inner_text(), timeout_s=5)
+                if preco_raw2 != "__TIMEOUT__" and preco_raw2:
+                    preco_raw = preco_raw2.strip()
         except:
             pass
 
         preco_num = clean_price(preco_raw)
 
+        # Estoque (na Pellegrino o input existe quando pode comprar)
         input_qtd = tr.locator("input.vit-qtde-table")
         tem_estoque = await input_qtd.count() > 0 and preco_num > 0
         qtd_disponivel = 1.0 if tem_estoque else 0.0
@@ -209,7 +268,7 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
     valor_total = preco_num * quantidade_solicitada
     pode_comprar = tem_estoque
 
-    regiao_sc = {
+    regiao_rj = {
         "uf": "RJ",
         "preco": preco_raw,
         "preco_num": preco_num,
@@ -237,10 +296,10 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
         "qtdSolicitada": quantidade_solicitada,
         "qtdDisponivel": qtd_disponivel,
         "podeComprar": pode_comprar,
-        "mensagem": regiao_sc["mensagem"],
+        "mensagem": regiao_rj["mensagem"],
         "disponivel": tem_estoque,
         "status": "Disponível" if tem_estoque else "Indisponível",
-        "regioes": [regiao_sc]
+        "regioes": [regiao_rj]
     }
 
     print(f"✅ SUCESSO SKY: {codigo_fab} | {format_brl(preco_num)} | {marca_text}")
@@ -258,11 +317,18 @@ def preparar_dados_finais(lista_itens):
     }
 
 # ===================== MAIN LOOP ===================== #
-async def processar_lista_produtos_sequencial14(page, lista_produtos):
+async def processar_lista_produtos_sequencial14(login_data_ou_page, lista_produtos):
     global bloqueios_removidos
     bloqueios_removidos = False
 
     itens_extraidos = []
+
+    # ✅ aceita tupla (browser, context, page) OU page direto
+    page = resolver_page(login_data_ou_page)
+
+    if not page or not hasattr(page, "goto"):
+        print("❌ Erro: Objeto 'page' inválido recebido (veio tupla errada ou None).")
+        return []
 
     if not lista_produtos:
         print("⚠️ Lista vazia. Usando teste padrão.")
@@ -279,10 +345,11 @@ async def processar_lista_produtos_sequencial14(page, lista_produtos):
         try:
             await buscar_produto(page, codigo)
 
-            # ✅ redundância: se o tutorial aparecer durante o carregamento da tabela, fecha novamente
+            # redundância: se o tutorial aparecer durante o carregamento, fecha de novo
             await asyncio.sleep(0.8)
             await fechar_driver_tutorial(page, motivo="antes da extração")
 
+            # ✅ extração com timeout 5s interno (se travar, retorna None e pula)
             resultado = await extrair_dados_produto(page, codigo, qtd)
 
             if resultado:
@@ -292,7 +359,7 @@ async def processar_lista_produtos_sequencial14(page, lista_produtos):
 
         except Exception as e:
             print(f"❌ Erro crítico no loop F14: {e}")
-            await page.reload(wait_until="networkidle")
+            await safe_reload(page, motivo="erro no loop F14", wait_until="domcontentloaded")
 
     # SALVAMENTO
     if itens_extraidos:

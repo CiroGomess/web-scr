@@ -2,8 +2,8 @@ import asyncio
 from playwright.async_api import async_playwright
 
 # --- IMPORTS ---
-from controllers.fornecedores.Fornecedor8Controller import login_sama_bypass
-from controllers.produtos.produtoController8 import processar_lista_produtos_sequencial8
+from controllers.fornecedores.Fornecedor14Controller import login_sky_bypass
+from controllers.produtos.produtoController14 import processar_lista_produtos_sequencial14
 
 async def main():
     print("🚀 Iniciando Runner de Teste (Fornecedor 4 - GB)...")
@@ -254,7 +254,7 @@ async def main():
 
         # 1) Login
         try:
-            login_data = await login_sama_bypass(p)
+            login_data = await login_sky_bypass(p)
             browser, context, page = login_data
         except Exception as e:
             print(f"\n❌ Falha crítica no login: {e}")
@@ -270,7 +270,7 @@ async def main():
 
         # 2) Chama o processamento com a lista limpa
         try:
-            resultados = await processar_lista_produtos_sequencial8(login_data, lista_limpa)
+            resultados = await processar_lista_produtos_sequencial14(login_data, lista_limpa)
         except Exception as e:
             print(f"\n❌ Erro durante o processamento da lista: {e}")
             resultados = []

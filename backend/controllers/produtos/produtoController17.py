@@ -1,3 +1,5 @@
+# produtoController17.py
+
 import asyncio
 import re
 from datetime import datetime
@@ -11,69 +13,135 @@ except ImportError:
 
 # ===================== AUXILIARES ===================== #
 def clean_price(preco_str):
-    if not preco_str: return 0.0
+    if not preco_str:
+        return 0.0
     preco = re.sub(r"[^\d,]", "", str(preco_str))
     preco = preco.replace(",", ".")
-    try: return float(preco)
-    except: return 0.0
+    try:
+        return float(preco)
+    except:
+        return 0.0
 
 def format_brl(valor):
-    if valor is None or valor == 0: return "R$ 0,00"
+    if valor is None or valor == 0:
+        return "R$ 0,00"
     return "R$ " + f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def clean_stock(stock_str):
-    if not stock_str: return 0.0
+    if not stock_str:
+        return 0.0
     stock = re.sub(r"[^\d]", "", str(stock_str))
-    try: return float(stock)
-    except: return 0.0
+    try:
+        return float(stock)
+    except:
+        return 0.0
 
-# ===================== TRATAMENTO LOADING (TRAVAMENTO) ===================== #
-async def verificar_e_recuperar_loading(page) -> bool:
+# ===================== LOADING: REGRA ABSOLUTA ===================== #
+async def wait_loading_sumir(page, timeout=60000):
     """
-    Verifica se a tela de loading (#loading) está travada.
-    Se estiver visível: Dá refresh na página e aguarda.
-    Retorna True se houve recuperação (refresh), False se está tudo ok.
+    Espera o #loading SUMIR (hidden/detached).
+    - Se não existir, segue.
+    - Se existir e estiver visível, aguarda esconder.
     """
     try:
-        # Verifica se o elemento de loading está visível
-        if await page.locator("#loading").is_visible(timeout=1000):
-            print("⚠️ TELA DE LOADING TRAVADA DETECTADA! Iniciando recuperação...")
-            
-            # Atualiza a página
+        loading = page.locator("#loading")
+        if await loading.count() == 0:
+            return True
+
+        if await loading.is_visible():
+            print("⏳ #loading visível... aguardando sumir.")
+            await loading.wait_for(state="hidden", timeout=timeout)
+            print("✅ #loading sumiu.")
+        return True
+    except Exception as e:
+        print(f"⚠️ Timeout/erro aguardando #loading sumir: {e}")
+        return False
+
+async def ensure_ready(page, timeout=60000, tentar_recuperar=True):
+    """
+    Garante que nenhuma ação ocorra com loader na tela.
+    Se travar e tentar_recuperar=True, dá reload e tenta de novo.
+    """
+    ok = await wait_loading_sumir(page, timeout=timeout)
+    if ok:
+        return True
+
+    if tentar_recuperar:
+        print("⚠️ #loading pode estar travado. Tentando recuperar com reload...")
+        try:
             await page.reload()
             try:
-                await page.wait_for_load_state("networkidle", timeout=10000)
+                await page.wait_for_load_state("domcontentloaded", timeout=20000)
             except:
                 pass
-            
+        except Exception as e:
+            print(f"⚠️ Falha no reload de recuperação: {e}")
+
+        ok2 = await wait_loading_sumir(page, timeout=timeout)
+        return ok2
+
+    return False
+
+# Mantém a função existente (usada no seu loop), mas agora mais consistente.
+async def verificar_e_recuperar_loading(page) -> bool:
+    """
+    Se #loading estiver visível, dá refresh e espera sumir.
+    Retorna True se fez recuperação (reload), False se não precisou.
+    """
+    try:
+        loading = page.locator("#loading")
+        if await loading.count() > 0 and await loading.is_visible():
+            print("⚠️ TELA DE LOADING DETECTADA! Iniciando recuperação...")
+            await page.reload()
+            try:
+                await page.wait_for_load_state("domcontentloaded", timeout=20000)
+            except:
+                pass
+
+            await wait_loading_sumir(page, timeout=60000)
             print("🔄 Página atualizada. Retomando fluxo...")
             return True
     except Exception:
         pass
-    
     return False
 
 # ===================== HELPERS “COM CALMA” ===================== #
 async def click_com_calma(locator, pre=0.4, post=0.6, force=True):
     try:
+        page = locator.page
+        await ensure_ready(page, timeout=60000, tentar_recuperar=True)
+    except:
+        pass
+
+    try:
         await asyncio.sleep(pre)
         await locator.scroll_into_view_if_needed()
-    except: pass
+    except:
+        pass
+
     await asyncio.sleep(pre)
     await locator.click(force=force)
     await asyncio.sleep(post)
 
 async def limpar_e_digitar_com_calma(page, selector, texto, delay_keypress=70):
+    await ensure_ready(page, timeout=60000, tentar_recuperar=True)
+
     await page.wait_for_selector(selector, state="visible", timeout=20000)
     campo = page.locator(selector).first
+
     await click_com_calma(campo, pre=0.25, post=0.25)
+    await ensure_ready(page, timeout=60000, tentar_recuperar=True)
+
     await asyncio.sleep(0.2)
     await page.keyboard.press("Control+A")
     await asyncio.sleep(0.15)
     await page.keyboard.press("Backspace")
     await asyncio.sleep(0.25)
+
     await campo.type(str(texto), delay=delay_keypress)
     await asyncio.sleep(0.3)
+
+    await ensure_ready(page, timeout=60000, tentar_recuperar=False)
 
 # ===================== NAVEGAÇÃO E BUSCA ===================== #
 async def navegar_para_pedido(page):
@@ -82,21 +150,22 @@ async def navegar_para_pedido(page):
     """
     try:
         url_atual = page.url or ""
-        
-        # Se já estiver na URL certa, sai
+
         if "/Movimentacao" in url_atual:
             return
 
         base_url = "http://novo.plsweb.com.br"
         if ".br" in url_atual:
             base_url = url_atual.split(".br")[0] + ".br"
-        
+
         target_url = base_url + "/Movimentacao"
-        
+
         print(f"🚀 Navegando direto para: {target_url}")
-        await page.goto(target_url)
-        await page.wait_for_load_state("domcontentloaded")
-        
+        await page.goto(target_url, wait_until="domcontentloaded", timeout=60000)
+
+        # ✅ REGRA: não faz nada com loader na tela
+        await ensure_ready(page, timeout=90000, tentar_recuperar=True)
+
         try:
             await page.wait_for_selector("a[href='#tabs-2'], #loading", timeout=10000)
         except:
@@ -105,26 +174,31 @@ async def navegar_para_pedido(page):
     except Exception as e:
         print(f"⚠️ Erro ao navegar para Pedido: {e}")
 
-
 async def ativar_aba_produtos(page):
-    """Clica na aba 'Produtos' (#tabs-2) com calma"""
+    """Clica na aba 'Produtos' (#tabs-2) com calma e só avança sem loader."""
     try:
-        # Seletor baseado no HTML fornecido e href
+        await ensure_ready(page, timeout=60000, tentar_recuperar=True)
+
         aba_produtos = page.locator("a[href='#tabs-2']").first
 
-        # se o input já estiver visível, a aba já está ok
-        if await page.locator("#codPeca").is_visible():
-            return
+        # Se o input já estiver visível, a aba já está ok
+        try:
+            if await page.locator("#codPeca").is_visible():
+                return
+        except:
+            pass
 
         print("📑 Clicando na aba 'Produtos'...")
         try:
             await aba_produtos.wait_for(state="visible", timeout=10000)
-        except: pass
+        except:
+            pass
 
         if await aba_produtos.count() > 0 and await aba_produtos.is_visible():
             await click_com_calma(aba_produtos, pre=0.6, post=1.0)
-            await asyncio.sleep(1.0)
 
+        # ✅ depois do clique, espera o loader sumir e o input aparecer
+        await ensure_ready(page, timeout=90000, tentar_recuperar=True)
         await page.wait_for_selector("#codPeca", state="visible", timeout=15000)
 
     except Exception as e:
@@ -133,13 +207,13 @@ async def ativar_aba_produtos(page):
 async def buscar_produto(page, codigo):
     try:
         await navegar_para_pedido(page)
-        
+
         # Se travou no loading logo após navegar
         if await verificar_e_recuperar_loading(page):
             await navegar_para_pedido(page)
 
         # ================================================================
-        # ⏳ WAIT SOLICITADO: 5 Segundos antes de clicar na aba Produtos
+        # ⏳ WAIT FIXO PARA CARREGAMENTO DA TELA (MANTIDO)
         # ================================================================
         print("⏳ Aguardando 10 segundos fixos para carregamento da tela...")
         await asyncio.sleep(10)
@@ -155,31 +229,26 @@ async def buscar_produto(page, codigo):
         await asyncio.sleep(0.4)
         await page.keyboard.press("Enter")
 
+        # ✅ REGRA PRINCIPAL: só prossegue quando #loading sumir
+        print("⏳ Aguardando processamento da busca (#loading sumir)...")
+        await ensure_ready(page, timeout=90000, tentar_recuperar=True)
+
+        # tenta aguardar resultado, mas não falha se não vier
         print("⏳ Aguardando resultados...")
-        
-        # --- VERIFICAÇÃO DE LOADING ENQUANTO ESPERA ---
         try:
-            task_result = asyncio.create_task(page.wait_for_selector("tr.jqgrow", timeout=6000))
-            task_loading = asyncio.create_task(page.wait_for_selector("#loading", state="visible", timeout=6000))
-            
-            done, pending = await asyncio.wait({task_result, task_loading}, return_when=asyncio.FIRST_COMPLETED)
-            
-            for t in pending: t.cancel()
-            
-            if task_loading in done:
-                try: await task_loading
-                except: pass
+            await page.wait_for_selector("tr.jqgrow", timeout=6000)
         except:
             pass
-        # -----------------------------------------------
 
-        await asyncio.sleep(1.4)
+        await asyncio.sleep(0.8)
 
     except Exception as e:
         print(f"❌ Erro na busca PLS: {e}")
 
 # ===================== EXTRAÇÃO DOS DADOS ===================== #
 async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1):
+    await ensure_ready(page, timeout=60000, tentar_recuperar=True)
+
     linhas = page.locator("tr.jqgrow")
 
     if await linhas.count() == 0:
@@ -198,6 +267,8 @@ async def extrair_dados_produto(page, codigo_solicitado, quantidade_solicitada=1
 
     try:
         await asyncio.sleep(0.4)
+        await ensure_ready(page, timeout=60000, tentar_recuperar=False)
+
         colunas = tr.locator("td")
 
         codigo_fab = (await colunas.nth(0).inner_text()).strip()
@@ -244,7 +315,7 @@ def preparar_dados_finais(lista_itens):
     return {
         "data_processamento_lote": agora.strftime("%d/%m/%Y %H:%M:%S"),
         "data_obj": agora,
-        "fornecedror": "Odapel", 
+        "fornecedror": "Odapel",
         "total_itens": len(lista_itens),
         "itens": lista_itens
     }
@@ -261,8 +332,8 @@ async def processar_lista_produtos_sequencial17(login_data_ou_page, lista_produt
             page = login_data_ou_page[-1]
     else:
         page = login_data_ou_page
-    
-    if not page or not hasattr(page, 'goto'):
+
+    if not page or not hasattr(page, "goto"):
         print("❌ Erro: Objeto 'page' inválido recebido.")
         return []
 
@@ -281,15 +352,21 @@ async def processar_lista_produtos_sequencial17(login_data_ou_page, lista_produt
         # === LOOP DE RETRY PARA LOADING TRAVADO ===
         while True:
             try:
-                # 1. Verifica antes
+                # 0) REGRA: se tiver loader visível, resolve antes de tudo
+                await ensure_ready(page, timeout=90000, tentar_recuperar=True)
+
+                # 1) Verifica antes
                 if await verificar_e_recuperar_loading(page):
-                    continue 
+                    continue
 
                 await buscar_produto(page, codigo)
-                
-                # 2. Verifica depois da busca
+
+                # 2) Garante que a busca terminou e loader sumiu
+                await ensure_ready(page, timeout=90000, tentar_recuperar=True)
+
+                # 3) Verifica depois da busca
                 if await verificar_e_recuperar_loading(page):
-                    continue 
+                    continue
 
                 resultado = await extrair_dados_produto(page, codigo, qtd)
 
@@ -297,15 +374,22 @@ async def processar_lista_produtos_sequencial17(login_data_ou_page, lista_produt
                     itens_extraidos.append(resultado)
 
                 await asyncio.sleep(1.1)
-                break 
+                break
 
             except Exception as e:
                 print(f"❌ Erro crítico no loop F17: {e}")
-                if await verificar_e_recuperar_loading(page):
+
+                # tenta recuperar e continuar
+                recuperou = await verificar_e_recuperar_loading(page)
+                if recuperou:
                     continue
-                try: await page.reload(wait_until="networkidle")
-                except: pass
-                break 
+
+                try:
+                    await page.reload(wait_until="domcontentloaded")
+                    await ensure_ready(page, timeout=90000, tentar_recuperar=False)
+                except:
+                    pass
+                break
 
     # SALVAMENTO
     if itens_extraidos and salvar_lote_sqlite:
@@ -316,5 +400,5 @@ async def processar_lista_produtos_sequencial17(login_data_ou_page, lista_produt
                 print("✅ Banco atualizado!")
             else:
                 print("❌ Erro ao salvar no banco.")
-    
+
     return itens_extraidos
