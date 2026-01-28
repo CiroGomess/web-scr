@@ -2,7 +2,7 @@ import asyncio
 import random
 
 # ===================== CONFIG ===================== #
-LOGIN_URL_JAHU = "https://b2b.jahu.com.br/"
+LOGIN_URL_JAHU = "https://b2b.jahu.com.br"
 USUARIO_JAHU = "fiscal.autopecasvieira@gmail.com"
 SENHA_JAHU = "Jahu@123"
 

@@ -9,59 +9,26 @@ import axios, { AxiosError } from "axios";
 
 // 1. Criação da instância do Axios para Produção
 // O Nginx faz o proxy reverso, então usamos URL relativa e prefixo /api
-const api = axios.create({
-  baseURL: "/api",
-  withCredentials: false,
-  timeout: 21600000,
-});
-
-// Interceptor específico de PRODUÇÃO para garantir protocolo correto via Proxy
-api.interceptors.request.use(
-  (config) => {
-    if (typeof window !== "undefined") {
-      if (window.location.protocol === "https:") {
-        if (config.url?.startsWith("http://")) {
-          try {
-            const urlObj = new URL(config.url);
-            config.url = urlObj.pathname + urlObj.search;
-          } catch (e) {
-             // URL inválida, mantém original
-          }
-        }
-        config.baseURL = "/api";
-      }
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
-
-
-// =====================================================================
-// 🌍 AMBIENTE: LOCAL (ATIVO)
-// =====================================================================
-// Use esta configuração para rodar localmente sem o prefixo /api
 // const api = axios.create({
-//   baseURL: "http://127.0.0.1:5000",
-//   withCredentials: false, // Geralmente false para CORS simples local, ajuste se necessário
-//   timeout: 21600000, // 6 horas
+//   baseURL: "/api",
+//   withCredentials: false,
+//   timeout: 21600000,
 // });
 
-// =====================================================================
-// 🔐 CONFIGURAÇÕES GERAIS (COMUNS AOS DOIS AMBIENTES)
-// =====================================================================
-
-// 2. INTERCEPTOR DE REQUISIÇÃO (Injeta o Token)
-// Funciona tanto local quanto produção
+// // Interceptor específico de PRODUÇÃO para garantir protocolo correto via Proxy
 // api.interceptors.request.use(
 //   (config) => {
 //     if (typeof window !== "undefined") {
-//       const token = localStorage.getItem("token");
-      
-//       if (token && config.headers) {
-//         config.headers.Authorization = `Bearer ${token}`;
+//       if (window.location.protocol === "https:") {
+//         if (config.url?.startsWith("http://")) {
+//           try {
+//             const urlObj = new URL(config.url);
+//             config.url = urlObj.pathname + urlObj.search;
+//           } catch (e) {
+//              // URL inválida, mantém original
+//           }
+//         }
+//         config.baseURL = "/api";
 //       }
 //     }
 //     return config;
@@ -70,6 +37,39 @@ api.interceptors.request.use(
 //     return Promise.reject(error);
 //   }
 // );
+
+
+// =====================================================================
+// 🌍 AMBIENTE: LOCAL (ATIVO)
+// =====================================================================
+// Use esta configuração para rodar localmente sem o prefixo /api
+const api = axios.create({
+  baseURL: "http://127.0.0.1:5000",
+  withCredentials: false, // Geralmente false para CORS simples local, ajuste se necessário
+  timeout: 21600000, // 6 horas
+});
+
+// =====================================================================
+// 🔐 CONFIGURAÇÕES GERAIS (COMUNS AOS DOIS AMBIENTES)
+// =====================================================================
+
+// 2. INTERCEPTOR DE REQUISIÇÃO (Injeta o Token)
+// Funciona tanto local quanto produção
+api.interceptors.request.use(
+  (config) => {
+    if (typeof window !== "undefined") {
+      const token = localStorage.getItem("token");
+      
+      if (token && config.headers) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
 
 // 3. FUNÇÃO WRAPPER (Padroniza a resposta)
 const services = async (endpoint: string, options: any = {}) => {

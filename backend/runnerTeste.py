@@ -1,5 +1,6 @@
 import asyncio
 import time
+import traceback
 from playwright.async_api import async_playwright
 
 # ===================== IMPORTS LOGIN ===================== #
@@ -40,10 +41,8 @@ from controllers.produtos.produtoController15 import processar_lista_produtos_se
 from controllers.produtos.produtoController16 import processar_lista_produtos_sequencial16
 from controllers.produtos.produtoController17 import processar_lista_produtos_sequencial17
 
-
 # ===================== CONFIG ===================== #
 BATCH_SIZE = 5
-
 
 # ===================== MAPA FORNECEDORES ===================== #
 FORNECEDORES = [
@@ -66,16 +65,16 @@ FORNECEDORES = [
     ("F17", login_f17, processar_lista_produtos_sequencial17),
 ]
 
-
 # ===================== UTIL ===================== #
 def chunked(lista, size):
     for i in range(0, len(lista), size):
         yield lista[i:i + size]
 
-
 def log(msg):
     print(f"[{time.strftime('%H:%M:%S')}] {msg}")
 
+def now_str():
+    return time.strftime("%Y-%m-%d %H:%M:%S")
 
 # ===================== RELATÓRIO TXT ===================== #
 def salvar_relatorio_txt(resumo):
@@ -83,7 +82,10 @@ def salvar_relatorio_txt(resumo):
         f.write("RELATÓRIO DE EXECUÇÃO DOS FORNECEDORES\n")
         f.write("=" * 45 + "\n\n")
 
-        for nome, ok, qtd in resumo:
+        for item in resumo:
+            nome = item["nome"]
+            ok = item["ok"]
+            qtd = item["qtd"]
             status = "OK" if ok else "ERRO"
             f.write(f"Fornecedor: {nome}\n")
             f.write(f"Status: {status}\n")
@@ -92,9 +94,30 @@ def salvar_relatorio_txt(resumo):
 
     print("\n📄 Arquivo resultado_fornecedores.txt gerado com sucesso!")
 
+# ===================== LOG (.log) ===================== #
+def salvar_relatorio_log(resumo, arquivo="resultado_fornecedores.log"):
+    with open(arquivo, "w", encoding="utf-8") as f:
+        f.write(f"LOG DE EXECUÇÃO DOS FORNECEDORES - {now_str()}\n")
+        f.write("=" * 80 + "\n\n")
+
+        for item in resumo:
+            f.write(f"[{item['fim']}] Fornecedor: {item['nome']}\n")
+            f.write(f"Status: {'SUCESSO' if item['ok'] else 'FALHA'}\n")
+            f.write(f"Itens processados: {item['qtd']}\n")
+
+            if not item["ok"]:
+                f.write(f"Motivo: {item.get('erro_msg') or 'Motivo não informado'}\n")
+                tb = item.get("traceback")
+                if tb:
+                    f.write("Traceback:\n")
+                    f.write(tb.strip() + "\n")
+            f.write("-" * 80 + "\n\n")
+
+    print(f"🧾 Arquivo {arquivo} gerado com sucesso!")
 
 # ===================== EXECUÇÃO FORNECEDOR ===================== #
 async def executar_fornecedor(p, nome, login_fn, produto_fn, lista_produtos):
+    inicio = now_str()
     log(f"🔐 [{nome}] Iniciando login")
 
     browser = None
@@ -105,8 +128,17 @@ async def executar_fornecedor(p, nome, login_fn, produto_fn, lista_produtos):
         browser, context, page = await login_fn(p)
 
         if not context:
-            log(f"❌ [{nome}] Login falhou")
-            return nome, False, []
+            msg = "Login falhou (context=None)"
+            log(f"❌ [{nome}] {msg}")
+            return {
+                "nome": nome,
+                "ok": False,
+                "qtd": 0,
+                "inicio": inicio,
+                "fim": now_str(),
+                "erro_msg": msg,
+                "traceback": None,
+            }
 
         log(f"🔎 [{nome}] Login OK, iniciando busca de produtos")
 
@@ -124,11 +156,28 @@ async def executar_fornecedor(p, nome, login_fn, produto_fn, lista_produtos):
             )
 
         log(f"✅ [{nome}] Finalizado ({len(resultados)} itens)")
-        return nome, True, resultados
+        return {
+            "nome": nome,
+            "ok": True,
+            "qtd": len(resultados),
+            "inicio": inicio,
+            "fim": now_str(),
+            "erro_msg": None,
+            "traceback": None,
+        }
 
     except Exception as e:
+        tb = traceback.format_exc()
         log(f"🔥 [{nome}] Erro crítico: {e}")
-        return nome, False, []
+        return {
+            "nome": nome,
+            "ok": False,
+            "qtd": 0,
+            "inicio": inicio,
+            "fim": now_str(),
+            "erro_msg": str(e),
+            "traceback": tb,
+        }
 
     finally:
         try:
@@ -139,12 +188,10 @@ async def executar_fornecedor(p, nome, login_fn, produto_fn, lista_produtos):
         except:
             pass
 
-
 # ===================== MAIN ===================== #
 async def main():
 
     # ================= LISTA DE PRODUTOS ================= #
-    # 🔹 FORMATO ANTIGO (EXATAMENTE COMO VOCÊ PEDIU)
     lista_produtos = [
         {"codigo": "31968", "quantidade": 1},
         {"codigo": "16792", "quantidade": 1},
@@ -156,7 +203,6 @@ async def main():
     log(f"📦 Total de produtos para teste: {len(lista_produtos)}")
 
     async with async_playwright() as p:
-
         resumo_execucao = []
 
         for idx, grupo in enumerate(chunked(FORNECEDORES, BATCH_SIZE), start=1):
@@ -169,19 +215,24 @@ async def main():
 
             resultados = await asyncio.gather(*tarefas)
 
-            for nome, ok, itens in resultados:
-                status = "OK" if ok else "ERRO"
-                qtd = len(itens)
-                resumo_execucao.append((nome, ok, qtd))
-                log(f"📊 [{nome}] Status: {status} | Itens: {qtd}")
+            for item in resultados:
+                resumo_execucao.append(item)
+                status = "OK" if item["ok"] else "ERRO"
+                log(f"📊 [{item['nome']}] Status: {status} | Itens: {item['qtd']}")
+
+                if not item["ok"] and item.get("erro_msg"):
+                    log(f"   ↳ Motivo: {item['erro_msg']}")
 
             log(f"✅ LOTE {idx} FINALIZADO\n")
             await asyncio.sleep(5)
 
+        # mantém seu txt simples
         salvar_relatorio_txt(resumo_execucao)
 
-    log("🏁 Runner finalizado")
+        # novo .log detalhado (com motivo/traceback)
+        salvar_relatorio_log(resumo_execucao)
 
+    log("🏁 Runner finalizado")
 
 # ===================== ENTRY ===================== #
 if __name__ == "__main__":
